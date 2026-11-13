@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>2.5D 洞穴传送 · 跳一跳</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        height: 100%;
+        background: #14161a;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+    }
+    body { position: fixed; inset: 0; overscroll-behavior: none; }
+    #gameCanvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+    #gameControls {
+        position: fixed; z-index: 2;
+        display: flex; flex-direction: column; gap: 8px;
+        top: max(12px, env(safe-area-inset-top));
+        right: max(12px, env(safe-area-inset-right));
+    }
+    #gameControls button {
+        min-width: 112px; min-height: 44px;
+        padding: 8px 12px; border: 1px solid #68737d; border-radius: 10px;
+        background: #20262de6; color: #eef3f8;
+        font: 14px "Microsoft YaHei", sans-serif; touch-action: manipulation;
+    }
+    #gameControls button:focus-visible { outline: 2px solid #7ef0c8; outline-offset: 3px; }
+
+    #ui {
+        position: absolute;
+        top: max(16px, env(safe-area-inset-top));
+        left: max(18px, env(safe-area-inset-left));
+        color: #eef3f8;
+        font: bold 26px/1.2 "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+        text-shadow: 0 2px 6px rgba(0,0,0,.85);
+        pointer-events: none;
+        letter-spacing: 1px;
+    }
+    #ui small { display: block; font-size: 14px; font-weight: normal; opacity: .65; margin-top: 4px; letter-spacing: 2px; }
+    @media (max-width: 600px), (max-height: 500px) {
+        #ui { font-size: 22px; }
+        #ui small { font-size: 12px; }
+    }
+</style>
+</head>
+<body>
+<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small></div>
+<canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
+<div id="gameControls">
+<button id="muteButton" type="button" aria-pressed="false" aria-label="静音">静音</button>
+<button id="landingHintButton" type="button" aria-pressed="false">落点提示：关</button>
+</div>
+
+<script src="audio-bank.js"></script>
+<script src="game-audio.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   2.5D 洞穴传送版跳一跳
+   素材接口：把竖向 5 帧等分长图（透明底）命名为 player.png 放在同级目录。
+   帧顺序：① 自然站立 ② 蓄力下沉/起跳 ③ 腾空最高点 ④ 平缓下落 ⑤ 直接落地
+   若放入的是带纯色底的 player.jpg，会自动按四角颜色抠底。
+   ===================================================================== */
+
+/* ------------------------- 可调参数 ------------------------- */
+const CFG = {
+    spriteSrc: "player.png",      // 人物雪碧图
+    easterEggSrc: "assets/easter-300.png",
+    easterEggPlatform: 20, // Temporary preview; restore to 300 after review.
+    frameCount: 5,                // 竖向帧数
+    tileHW: 96,                   // 平台顶面水平半径（已加宽）
+    tileHWVar: 10,                // 平台大小随机浮动
+    tileDepth: 46,                // 平台厚度
+    gapMin: 170,                  // 平台间距（已减小）
+    gapMax: 240,
+    chargeMs: 1500,               // 蓄满所需毫秒（已调慢，手感平缓）
+    jumpMin: 45,                  // 世界距离：最小跳跃
+    jumpMax: 320,                 // 世界距离：最大跳跃
+    skyHoleDrop: 250,             // 空中黑洞高度（像素，保证人物钻出时完整可见）
+    fallGravity: 2900,            // 下落加速度 px/s^2
+    hopH: 54,                     // 松开后小跳的高度
+    hopMs: 340,                   // 小跳时长
+    sinkMs: 240,                  // 小跳落回后沉入黑洞的时长
+    perfectScale: 0.5,            // 完美判定（顶面菱形缩放）
+    edgeScale: 1.25,              // 边缘救球判定
+    playerH: 126                  // 人物显示高度
+};
+
+/* ------------------------- 画布 ------------------------- */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+// Keep physics in world units; scale only the display for small screens.
+let DPR = 1, VW = 0, VH = 0, viewScale = 1;
+function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    const visual = window.visualViewport;
+    const width = Math.max(1, visual ? visual.width : window.innerWidth);
+    const height = Math.max(1, visual ? visual.height : window.innerHeight);
+    viewScale = Math.min(1, width / 560, height / 720);
+    VW = width / viewScale; VH = height / viewScale;
+    canvas.width = Math.round(width * DPR); canvas.height = Math.round(height * DPR);
+    canvas.style.width = width + "px"; canvas.style.height = height + "px";
+    ctx.setTransform(DPR * viewScale, 0, 0, DPR * viewScale, 0, 0);
+}
+window.addEventListener("resize", resize);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+resize();
+
+/* ------------------------- 工具 ------------------------- */
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+function mulberry32(seed) {
+    return function () {
+        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+// 等距投影：世界坐标 -> 屏幕偏移（未含相机）
+const projX = (wx, wy) => wx - wy;
+const projY = (wx, wy) => (wx + wy) * 0.5;
+
+/* ------------------------- 素材加载 ------------------------- */
+let sprite = null;          // 处理好的透明 canvas
+let spriteFrames = [];      // 每帧 {sx, sy, sw, sh}
+let spriteReady = false;
+const easterEggImage = new Image();
+let easterEggReady = false;
+easterEggImage.onload = () => { easterEggReady = true; };
+easterEggImage.onerror = () => { easterEggReady = false; };
+easterEggImage.src = CFG.easterEggSrc;
+function chromaKey(srcCanvas) {
+    const c = document.createElement("canvas");
+    c.width = srcCanvas.width; c.height = srcCanvas.height;
+    const g = c.getContext("2d");
+    g.drawImage(srcCanvas, 0, 0);
+    const img = g.getImageData(0, 0, c.width, c.height);
+    const d = img.data;
+    const br = d[0], bgc = d[1], bb = d[2];   // 左上角作为底色
+    for (let i = 0; i < d.length; i += 4) {
+        const dist = Math.abs(d[i] - br) + Math.abs(d[i + 1] - bgc) + Math.abs(d[i + 2] - bb);
+        if (dist < 40) d[i + 3] = 0;
+        else if (dist < 95) d[i + 3] = Math.round(255 * (dist - 40) / 55);
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+}
+function buildSprite(img) {
+    const tmp = document.createElement("canvas");
+    tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
+    tmp.getContext("2d").drawImage(img, 0, 0);
+    // file:// 直接打开时本地图片会被视为跨源，getImageData 会抛错；
+    // 我们的 player.png 已是透明底，抠底失败时直接用原图即可。
+    let use = tmp;
+    try {
+        const probe = tmp.getContext("2d").getImageData(0, 0, 1, 1).data;
+        if (probe[3] > 200) use = chromaKey(tmp);   // 不透明则按四角色抠底
+    } catch (e) {
+        console.warn("雪碧图抠底跳过（file:// 跨源限制），直接使用原图");
+    }
+    sprite = use;
+    const fw = sprite.width, fh = sprite.height / CFG.frameCount;
+    spriteFrames = [];
+    for (let i = 0; i < CFG.frameCount; i++) spriteFrames.push({ sx: 0, sy: i * fh, sw: fw, sh: fh });
+    spriteReady = true;
+}
+(function loadSprite() {
+    const img = new Image();
+    img.onload = () => buildSprite(img);
+    img.onerror = () => {                          // 退而求其次找 jpg
+        const j = new Image();
+        j.onload = () => buildSprite(j);
+        j.onerror = () => { spriteReady = false; }; // 用矢量占位人物
+        j.src = "player.jpg";
+    };
+    img.src = CFG.spriteSrc;
+})();
+
+/* ------------------------- 音效（WebAudio 合成，无外部文件） ------------------------- */
+const SFX = {
+    ctx: null, _muted: false,
+    get muted() { return this._muted; },
+    set muted(value) { this._muted = !!value; RecordedAudio.setMuted(this._muted); },
+    ensure() { if (!this.ctx) { try { this.ctx = RecordedAudio.ctx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (this.ctx && this.ctx.state === "suspended" && !this.muted) this.ctx.resume().catch(() => {}); },
+    tone(f0, f1, dur, type, vol, delay) {
+        if (this.muted || !this.ctx) return;
+        const t = this.ctx.currentTime + (delay || 0);
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = type || "sine";
+        o.frequency.setValueAtTime(f0, t);
+        o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t + dur);
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(vol || .18, t + .012);
+        g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+        o.connect(g).connect(RecordedAudio.master || this.ctx.destination);
+        o.start(t); o.stop(t + dur + .02);
+    },
+    noise(dur, vol, fc) {
+        if (this.muted || !this.ctx) return;
+        const t = this.ctx.currentTime, n = this.ctx.sampleRate * dur;
+        const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+        const s = this.ctx.createBufferSource(); s.buffer = buf;
+        const f = this.ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = fc || 900;
+        const g = this.ctx.createGain(); g.gain.value = vol || .2;
+        s.connect(f).connect(g).connect(RecordedAudio.master || this.ctx.destination); s.start(t);
+    },
+    charge() { this.tone(140, 420, .35, "sine", .1); },
+    hop() { RecordedAudio.play('jump'); },
+    portal() { this.noise(.32, .16, 700); this.tone(520, 90, .3, "sine", .12); },
+    drop() { this.tone(700, 180, .35, "triangle", .1); },
+    land() { RecordedAudio.play('meow'); },
+    perfect() { /* Keep the landing voice clear. */ },
+    fail() { this.tone(300, 60, .7, "sawtooth", .12); }
+};
+
+/* ------------------------- 游戏状态 ------------------------- */
+const ST = { IDLE: 0, CHARGING: 1, SINK: 2, HOLE_OPEN: 3, FALLING: 4, LAND: 5, DYING: 6, OVER: 7, HOP: 8 };
+let state = ST.IDLE;
+let stateT = 0;                 // 当前状态已持续时间(s)
+let score = 0, combo = 0;
+let best = +(localStorage.getItem("cavejump_best") || 0);
+document.getElementById("best").textContent = "最佳 " + best;
+
+let platforms = [];             // {wx, wy, hw, hh, depth, tint, deco}
+let curIdx = 0;
+let player = { wx: 0, wy: 0, sink: 0, drop: 0, fallV: 0, squash: 0, wobble: 0, frame: 0 };
+let power = 0;                  // 0..1
+let jumpDir = { x: 1, y: 0 };   // 本次跳跃方向（世界轴）
+let landInfo = null;            // {plat, px, py, kind}
+let hole = { wx: 0, wy: 0, r: 0, active: false };      // 脚下传送洞
+let skyHole = { wx: 0, wy: 0, r: 0, active: false };   // 落点高空洞
+let cam = { wx: 0, wy: 0 };
+let started = false;
+let missionPlatform = null;
+
+const dust = [], bursts = [], popups = [];
+for (let i = 0; i < 70; i++) dust.push({ x: Math.random(), y: Math.random(), s: rand(.4, 1.6), p: Math.random() * 7, v: rand(.008, .03) });
+
+function newPlatform(from, dir, gap) {
+    const sequence = from.sequence + 1;
+    const hw = CFG.tileHW + rand(-CFG.tileHWVar, CFG.tileHWVar);
+    return {
+        wx: from.wx + dir.x * gap, wy: from.wy + dir.y * gap,
+        hw, hh: hw / 2, depth: 0,
+        sequence, easterEgg: sequence === CFG.easterEggPlatform,
+        tint: rand(-10, 10), deco: Math.random() < .45 ? Math.floor(rand(0, 3)) : -1
+    };
+}
+let dirHistory = [];
+function nextDir() {
+    const opts = [{ x: 1, y: 0 }, { x: 0, y: -1 }];
+    let d = opts[Math.random() < .5 ? 0 : 1];
+    if (dirHistory.length >= 2 && dirHistory[dirHistory.length - 1] === d && dirHistory[dirHistory.length - 2] === d)
+        d = opts[1 - opts.indexOf(d)];
+    dirHistory.push(d); if (dirHistory.length > 4) dirHistory.shift();
+    return d;
+}
+function ensurePlatforms() {
+    while (platforms.length < curIdx + 5) {
+        const last = platforms[platforms.length - 1];
+        platforms.push(newPlatform(last, nextDir(), rand(CFG.gapMin, CFG.gapMax)));
+    }
+    if (curIdx > 2) platforms.splice(0, curIdx - 2), curIdx = 2, reindex();
+}
+function reindex() { platforms.forEach(p => p.depth = p.wx + p.wy); }
+
+function reset() {
+    RecordedAudio.stopVoice();
+    RecordedAudio.deferIdle();
+    platforms = [{ sequence: 0, easterEgg: false, wx: 0, wy: 0, hw: CFG.tileHW + 6, hh: (CFG.tileHW + 6) / 2, tint: 0, deco: -1 }];
+    dirHistory = [];
+    curIdx = 0;
+    ensurePlatforms(); reindex();
+    player.wx = 0; player.wy = 0; player.sink = 0; player.drop = 0; player.fallV = 0; player.squash = 0; player.wobble = 0;
+    power = 0; landInfo = null;
+    hole.active = false; skyHole.active = false;
+    cam.wx = platforms[0].wx + 40; cam.wy = platforms[0].wy - 20;
+    score = 0; combo = 0;
+    missionPlatform = null;
+    document.getElementById("score").textContent = 0;
+    state = ST.IDLE; stateT = 0; started = false;
+    popups.length = 0; bursts.length = 0;
+}
+reset();
+
+/* ------------------------- 输入 ------------------------- */
+function pressStart() {
+    RecordedAudio.unlock();
+    RecordedAudio.stopVoice();
+    SFX.ensure();
+    if (state === ST.OVER) { reset(); return; }
+    if (!started) started = true;
+    if (state !== ST.IDLE) return;
+    state = ST.CHARGING; stateT = 0; power = 0;
+    hole.wx = player.wx; hole.wy = player.wy; hole.active = false; hole.r = 0;
+    SFX.charge();
+}
+function pressEnd() {
+    if (state !== ST.CHARGING) return;
+    if (power < 0.06) { state = ST.IDLE; hole.active = false; player.sink = 0; return; }  // 轻点取消
+    if (missionPlatform) {
+        missionPlatform.easterEgg = false;
+        missionPlatform = null;
+    }
+    state = ST.HOP; stateT = 0;                     // 先小跳一下
+    hole.wx = player.wx; hole.wy = player.wy; hole.active = true; hole.r = 0.95;
+    jumpDir = nextDirForJump();
+    SFX.hop();
+}
+function nextDirForJump() {
+    // 朝下一个平台的方向跳
+    const nxt = platforms[curIdx + 1];
+    const dx = nxt.wx - platforms[curIdx].wx, dy = nxt.wy - platforms[curIdx].wy;
+    return { x: Math.sign(dx), y: Math.sign(dy) };
+}
+let activePointer = null, keyboardHeld = false;
+function cancelCharge() {
+    if (state === ST.CHARGING) { state = ST.IDLE; stateT = 0; power = 0; hole.active = false; player.sink = 0; }
+    RecordedAudio.stopVoice();
+    RecordedAudio.deferIdle();
+}
+function releasePointer() {
+    const id = activePointer;
+    activePointer = null;
+    if (id !== null && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+}
+function cancelInput() {
+    releasePointer(); keyboardHeld = false; cancelCharge();
+}
+canvas.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.isPrimary === false || activePointer !== null || keyboardHeld) return;
+    e.preventDefault(); activePointer = e.pointerId;
+    canvas.setPointerCapture(e.pointerId); pressStart();
+});
+canvas.addEventListener("pointerup", e => {
+    if (e.pointerId !== activePointer) return;
+    e.preventDefault(); releasePointer(); pressEnd();
+});
+canvas.addEventListener("pointercancel", e => { if (e.pointerId === activePointer) cancelInput(); });
+canvas.addEventListener("lostpointercapture", e => { if (e.pointerId === activePointer) cancelInput(); });
+window.addEventListener("blur", cancelInput);
+window.addEventListener("orientationchange", cancelInput);
+document.addEventListener("visibilitychange", () => { if (document.hidden) cancelInput(); });
+const muteButton = document.getElementById("muteButton");
+const landingHintButton = document.getElementById("landingHintButton");
+let showLandingHint = false;
+try { showLandingHint = localStorage.getItem("cavejump_landing_hint") === "true"; } catch (_) {}
+function syncLandingHintButton() {
+    landingHintButton.setAttribute("aria-pressed", String(showLandingHint));
+    landingHintButton.textContent = "\u843d\u70b9\u63d0\u793a\uff1a" + (showLandingHint ? "\u5f00" : "\u5173");
+}
+landingHintButton.addEventListener("click", () => {
+    showLandingHint = !showLandingHint;
+    syncLandingHintButton();
+    try { localStorage.setItem("cavejump_landing_hint", String(showLandingHint)); } catch (_) {}
+});
+syncLandingHintButton();
+function toggleMute() {
+    SFX.muted = !SFX.muted;
+    muteButton.setAttribute("aria-pressed", String(SFX.muted));
+    muteButton.textContent = SFX.muted ? "\u5f00\u542f\u58f0\u97f3" : "\u9759\u97f3";
+    muteButton.setAttribute("aria-label", muteButton.textContent);
+    if (SFX.ctx) { const action = SFX.muted ? "suspend" : "resume"; SFX.ctx[action]().catch(() => {}); }
+}
+muteButton.addEventListener("click", toggleMute);
+window.addEventListener("keydown", e => {
+    if (e.target === muteButton || e.target === landingHintButton) return;
+    if (e.code === "Space" && !e.repeat && !keyboardHeld && activePointer === null) {
+        e.preventDefault(); keyboardHeld = true; pressStart();
+    }
+    if (e.code === "KeyM" && !e.repeat) toggleMute();
+});
+window.addEventListener("keyup", e => {
+    if (e.code === "Space" && keyboardHeld) { e.preventDefault(); keyboardHeld = false; pressEnd(); }
+});
+window.addEventListener("contextmenu", e => e.preventDefault());
+
+/* ------------------------- 判定 ------------------------- */
+function screenDelta(p, wx, wy) { return { dx: projX(wx, wy) - projX(p.wx, p.wy), dy: projY(wx, wy) - projY(p.wx, p.wy) }; }
+function insideDiamond(p, wx, wy, scale) {
+    const d = screenDelta(p, wx, wy);
+    return Math.abs(d.dx) / p.hw + Math.abs(d.dy) / p.hh <= scale;
+}
+function findLanding(wx, wy) {
+    let bestP = null, bestD = 1e9, kind = "miss";
+    for (const p of platforms) {
+        const d = screenDelta(p, wx, wy);
+        const dist = Math.hypot(d.dx, d.dy);
+        if (dist > bestD) continue;
+        if (insideDiamond(p, wx, wy, CFG.perfectScale)) { bestP = p; bestD = dist; kind = "perfect"; }
+        else if (insideDiamond(p, wx, wy, 1)) { if (!bestP || kind === "miss") { bestP = p; bestD = dist; kind = "good"; } }
+        else if (insideDiamond(p, wx, wy, CFG.edgeScale)) { if (!bestP) { bestP = p; bestD = dist; kind = "edge"; } }
+    }
+    return { plat: bestP, kind };
+}
+const jumpDist = () => CFG.jumpMin + power * (CFG.jumpMax - CFG.jumpMin);
+
+/* ------------------------- 更新 ------------------------- */
+function update(dt) {
+    RecordedAudio.tick(state === ST.IDLE && started);
+    stateT += dt;
+    // 相机目标
+    let tx, ty;
+    if (state === ST.HOLE_OPEN || state === ST.FALLING || state === ST.DYING) {
+        tx = landInfo ? landInfo.px : player.wx; ty = landInfo ? landInfo.py : player.wy;
+    } else {
+        const cur = platforms[curIdx], nxt = platforms[curIdx + 1];
+        tx = cur.wx + (nxt.wx - cur.wx) * 0.32; ty = cur.wy + (nxt.wy - cur.wy) * 0.32;
+    }
+    const k = 1 - Math.pow(0.0016, dt);
+    cam.wx = lerp(cam.wx, tx, k); cam.wy = lerp(cam.wy, ty, k);
+
+    switch (state) {
+        case ST.CHARGING: {
+            power = clamp(stateT * 1000 / CFG.chargeMs, 0, 1);
+            hole.active = false; hole.r = 0;
+            break;
+        }
+        case ST.HOP: {
+            hole.r = 0.95;
+            if (stateT * 1000 >= CFG.hopMs) { state = ST.SINK; stateT = 0; SFX.portal(); }
+            break;
+        }
+        case ST.SINK: {
+            // Finish the entire body crossing the portal before teleporting.
+            const progress = clamp(stateT * 1000 / CFG.sinkMs, 0, 1);
+            player.sink = (CFG.playerH + 32) * progress * progress;
+            hole.r = 0.95;
+            if (stateT * 1000 > CFG.sinkMs) {
+                // 计算落点
+                const d = jumpDist();
+                const lwx = player.wx + jumpDir.x * d, lwy = player.wy + jumpDir.y * d;
+                const res = findLanding(lwx, lwy);
+                landInfo = { plat: res.plat, px: lwx, py: lwy, kind: res.kind };
+                player.wx = lwx; player.wy = lwy;      // 水平位置同步到落点，垂直由 drop 控制
+                skyHole.wx = lwx; skyHole.wy = lwy; skyHole.active = true; skyHole.r = 1;
+                state = ST.HOLE_OPEN; stateT = 0;
+                SFX.drop();
+            }
+            break;
+        }
+        case ST.HOLE_OPEN: {
+            skyHole.r = 1;
+            hole.active = false;      // 脚下旧洞收拢
+            if (stateT > 0.3) { state = ST.FALLING; stateT = 0; player.drop = -CFG.skyHoleDrop; player.fallV = 0; hole.active = false; }
+            break;
+        }
+        case ST.FALLING: {
+            player.fallV += CFG.fallGravity * dt;
+            player.drop += player.fallV * dt;
+            if (player.drop >= 0) {
+                player.drop = 0;
+                resolveLanding();
+            }
+            break;
+        }
+        case ST.LAND: {
+            player.squash = Math.max(0, player.squash - dt * 4.2);
+            player.wobble *= Math.pow(0.02, dt);
+            if (landInfo && landInfo.kind === "edge") {
+                const p = landInfo.plat;
+                player.wx = lerp(player.wx, p.wx, 1 - Math.pow(0.05, dt));
+                player.wy = lerp(player.wy, p.wy, 1 - Math.pow(0.05, dt));
+            }
+            if (stateT > 0.34) { state = ST.IDLE; stateT = 0; player.squash = 0; }
+            break;
+        }
+        case ST.DYING: {
+            player.fallV += CFG.fallGravity * dt;
+            player.drop += player.fallV * dt;
+            if (stateT > 1.15) {
+                state = ST.OVER; stateT = 0;
+                if (score > best) { best = score; localStorage.setItem("cavejump_best", best); document.getElementById("best").textContent = "最佳 " + best; }
+            }
+            break;
+        }
+    }
+
+    // 粒子
+    for (let i = bursts.length - 1; i >= 0; i--) {
+        const b = bursts[i];
+        b.t += dt; b.x += b.vx * dt; b.y += b.vy * dt; b.vy += b.g * dt;
+        if (b.t > b.life) bursts.splice(i, 1);
+    }
+    for (let i = popups.length - 1; i >= 0; i--) {
+        const p = popups[i]; p.t += dt; p.y -= 42 * dt;
+        if (p.t > p.life) popups.splice(i, 1);
+    }
+    for (const m of dust) { m.y -= m.v * dt * 8; m.p += dt; if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); } }
+}
+
+function resolveLanding() {
+    skyHole.active = false;
+    const info = landInfo;
+    if (!info.plat) { state = ST.DYING; stateT = 0; player.fallV = 300; SFX.fail(); return; }
+    const p = info.plat;
+    if (p.easterEgg) missionPlatform = p;
+    // 落点收拢：向平台中心迈半步，消解上一跳遗留的横向偏移（容错手感）
+    const pull = info.kind === "perfect" ? 0.9 : info.kind === "good" ? 0.5 : 0;
+    player.wx = lerp(info.px, p.wx, pull);
+    player.wy = lerp(info.py, p.wy, pull);
+    player.squash = 1;
+    state = ST.LAND; stateT = 0;
+    SFX.land();
+    dustBurst(projOf(info.px, info.py), info.kind === "perfect" ? 26 : 14);
+    const idx = platforms.indexOf(p);
+    if (idx > curIdx) {
+        const gained = idx - curIdx;
+        curIdx = idx;
+        ensurePlatforms();
+        if (info.kind === "perfect") {
+            combo++;
+            const add = 2 + Math.min(combo - 1, 3);
+            score += add;
+            popup("PERFECT +" + add + (combo > 1 ? "  x" + combo : ""), "#7ef0c8");
+            SFX.perfect();
+        } else if (info.kind === "edge") {
+            combo = 0; score += gained;
+            popup("好险 +" + gained, "#ffd479");
+        } else {
+            combo = 0; score += gained;
+            popup("+" + gained, "#e8eef5");
+        }
+        document.getElementById("score").textContent = score;
+    } else {
+        popup("原地踏步", "#9aa6b4");
+    }
+}
+function popup(text, color) { popups.push({ text, color, x: VW / 2, y: VH * 0.34, t: 0, life: 1.1 }); }
+function dustBurst(sp, n) {
+    for (let i = 0; i < n; i++) {
+        const a = rand(-Math.PI, 0), s = rand(40, 190);
+        bursts.push({ x: sp.x + rand(-14, 14), y: sp.y + rand(-4, 4), vx: Math.cos(a) * s * rand(.4, 1), vy: Math.sin(a) * s * .55, g: 320, t: 0, life: rand(.35, .7), r: rand(1.5, 4), c: Math.random() < .5 ? "190,200,212" : "120,130,145" });
+    }
+}
+function projOf(wx, wy) {
+    return {
+        x: projX(wx, wy) - projX(cam.wx, cam.wy) + VW * 0.44,
+        y: projY(wx, wy) - projY(cam.wx, cam.wy) + VH * 0.58
+    };
+}
+
+/* ------------------------- 绘制：洞穴背景 ------------------------- */
+const rockRnd = mulberry32(20261113);
+const rockLayers = [0, 1].map(li => {
+    const pts = [];
+    for (let i = 0; i <= 26; i++) pts.push({ x: i / 26, y: 0.12 + rockRnd() * (li ? 0.16 : 0.1) + (li ? 0.3 : 0) });
+    return pts;
+});
+function drawBackground(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, VH);
+    g.addColorStop(0, "#3b4149"); g.addColorStop(.55, "#23272d"); g.addColorStop(1, "#101215");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+
+    // 顶部光锥
+    const lg = ctx.createRadialGradient(VW * .5, -VH * .2, 40, VW * .5, -VH * .2, VH * 1.1);
+    lg.addColorStop(0, "rgba(190,215,235,.16)"); lg.addColorStop(1, "rgba(190,215,235,0)");
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, VW, VH);
+
+    // 视差岩壁剪影
+    rockLayers.forEach((pts, li) => {
+        const par = li ? 0.16 : 0.07;
+        const ox = -projX(cam.wx, cam.wy) * par, oy = -projY(cam.wx, cam.wy) * par * .6;
+        ctx.fillStyle = li ? "rgba(16,19,23,.85)" : "rgba(28,32,38,.8)";
+        ctx.beginPath(); ctx.moveTo(-50, -50);
+        pts.forEach(p => ctx.lineTo(p.x * (VW + 200) - 100 + ox, p.y * VH + oy));
+        ctx.lineTo(VW + 50, -50); ctx.closePath(); ctx.fill();
+        // 底部钟乳石
+        ctx.beginPath(); ctx.moveTo(-50, VH + 50);
+        pts.forEach(p => ctx.lineTo(p.x * (VW + 200) - 100 - ox, VH - p.y * VH * .8 + oy * .5));
+        ctx.lineTo(VW + 50, VH + 50); ctx.closePath(); ctx.fill();
+    });
+
+    // 漂浮尘埃
+    for (const m of dust) {
+        const a = .05 + .09 * (0.5 + 0.5 * Math.sin(m.p * 2));
+        ctx.fillStyle = "rgba(205,220,235," + a.toFixed(3) + ")";
+        ctx.beginPath(); ctx.arc(m.x * VW, m.y * VH, m.s, 0, 7); ctx.fill();
+    }
+}
+function drawVignette() {
+    const g = ctx.createRadialGradient(VW / 2, VH / 2, Math.min(VW, VH) * .35, VW / 2, VH / 2, Math.max(VW, VH) * .75);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.55)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+}
+
+/* ------------------------- 绘制：平台 ------------------------- */
+function drawPlatform(p, t) {
+    const s = projOf(p.wx, p.wy);
+    const hw = p.hw, hh = p.hh, D = CFG.tileDepth;
+    const base = 168 + p.tint;
+    // 左侧面
+    ctx.fillStyle = "rgb(" + (base * .34 | 0) + "," + (base * .37 | 0) + "," + (base * .42 | 0) + ")";
+    ctx.beginPath();
+    ctx.moveTo(s.x - hw, s.y); ctx.lineTo(s.x, s.y + hh); ctx.lineTo(s.x, s.y + hh + D); ctx.lineTo(s.x - hw, s.y + D);
+    ctx.closePath(); ctx.fill();
+    // 右侧面
+    ctx.fillStyle = "rgb(" + (base * .24 | 0) + "," + (base * .26 | 0) + "," + (base * .31 | 0) + ")";
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y + hh); ctx.lineTo(s.x + hw, s.y); ctx.lineTo(s.x + hw, s.y + D); ctx.lineTo(s.x, s.y + hh + D);
+    ctx.closePath(); ctx.fill();
+    // 顶面
+    const tg = ctx.createLinearGradient(s.x - hw, s.y - hh, s.x + hw, s.y + hh);
+    tg.addColorStop(0, "rgb(" + (base + 26 | 0) + "," + (base + 30 | 0) + "," + (base + 36 | 0) + ")");
+    tg.addColorStop(1, "rgb(" + (base - 14 | 0) + "," + (base - 12 | 0) + "," + (base - 8 | 0) + ")");
+    ctx.fillStyle = tg;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y - hh); ctx.lineTo(s.x + hw, s.y); ctx.lineTo(s.x, s.y + hh); ctx.lineTo(s.x - hw, s.y);
+    ctx.closePath(); ctx.fill();
+    // 顶面内描边 + 裂纹
+    ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y - hh * .72); ctx.lineTo(s.x + hw * .72, s.y); ctx.lineTo(s.x, s.y + hh * .72); ctx.lineTo(s.x - hw * .72, s.y);
+    ctx.closePath(); ctx.stroke();
+    ctx.strokeStyle = "rgba(20,24,28,.35)"; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(s.x - hw * .5, s.y - hh * .1); ctx.lineTo(s.x - hw * .18, s.y + hh * .18); ctx.lineTo(s.x + hw * .1, s.y - hh * .05);
+    ctx.stroke();
+    // 装饰：发光水晶 / 碎石
+    if (p.deco === 0) {
+        const cx = s.x + hw * .45, cy = s.y - hh * .3;
+        const pulse = .55 + .35 * Math.sin(t * 2.4 + p.wx);
+        ctx.fillStyle = "rgba(110,225,205," + (pulse * .85).toFixed(2) + ")";
+        ctx.beginPath(); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx + 6, cy - 4); ctx.lineTo(cx, cy + 2); ctx.lineTo(cx - 6, cy - 4); ctx.closePath(); ctx.fill();
+        const gg = ctx.createRadialGradient(cx, cy - 6, 1, cx, cy - 6, 22);
+        gg.addColorStop(0, "rgba(110,225,205," + (pulse * .3).toFixed(2) + ")"); gg.addColorStop(1, "rgba(110,225,205,0)");
+        ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(cx, cy - 6, 22, 0, 7); ctx.fill();
+    } else if (p.deco === 1) {
+        ctx.fillStyle = "rgba(90,98,110,.9)";
+        ctx.beginPath(); ctx.ellipse(s.x - hw * .4, s.y + hh * .2, 7, 4, 0, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(s.x - hw * .28, s.y + hh * .38, 4.5, 2.6, 0, 0, 7); ctx.fill();
+    }
+}
+function drawEasterEgg(p) {
+    if (!p.easterEgg || !easterEggReady) return;
+    const s = projOf(p.wx, p.wy);
+    const width = Math.min(136, p.hw * 1.3);
+    const height = width * easterEggImage.naturalHeight / easterEggImage.naturalWidth;
+    // Rest on the back of the platform; keep its landing area and physics unchanged.
+    ctx.drawImage(easterEggImage, s.x - width / 2 + p.hw * .12,
+        s.y - p.hh * .18 - height, width, height);
+}
+function drawNextHint(t) {
+    const nxt = platforms[curIdx + 1];
+    if (!nxt || state === ST.OVER) return;
+    const s = projOf(nxt.wx, nxt.wy);
+    const a = .22 + .14 * Math.sin(t * 3);
+    ctx.strokeStyle = "rgba(140,230,210," + a.toFixed(3) + ")";
+    ctx.lineWidth = 2; ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 26;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y - nxt.hh * .9); ctx.lineTo(s.x + nxt.hw * .9, s.y); ctx.lineTo(s.x, s.y + nxt.hh * .9); ctx.lineTo(s.x - nxt.hw * .9, s.y);
+    ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+/* ------------------------- 绘制：传送洞 ------------------------- */
+function drawHole(wx, wy, r, t, frontOnly, yOff) {
+    if (r <= 0.01) return;
+    const s = projOf(wx, wy);
+    s.y += yOff || 0;
+    const rx = 62 * r, ry = 31 * r;
+    ctx.save();
+    if (frontOnly) {
+        ctx.beginPath();
+        ctx.rect(s.x - rx - 8, s.y, rx * 2 + 16, ry + 40);
+        ctx.clip();
+    }
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+}
+
+/* ------------------------- 绘制：人物 ------------------------- */
+function hopOffset() {
+    const ht = clamp(stateT * 1000 / CFG.hopMs, 0, 1);
+    return -4 * CFG.hopH * ht * (1 - ht);          // 小跳抛物线偏移
+}
+function drawPlayer(t) {
+    if (state === ST.HOLE_OPEN || state === ST.OVER) return;   // 已沉入洞中 / 局终隐藏
+    const s = projOf(player.wx, player.wy);
+    let fy = s.y;                                   // 脚底屏幕 y
+    if (state === ST.HOP) fy += hopOffset();        // 小跳抛物线
+    if (state === ST.SINK) fy += player.sink;       // 沉入黑洞
+    if (state === ST.FALLING || state === ST.DYING || state === ST.HOLE_OPEN) fy += player.drop;
+
+    // 影子
+    if (state !== ST.DYING && state !== ST.OVER && state !== ST.SINK) {
+        const hAbove = clamp(-(fy - s.y), -200, 400);
+        const sh = clamp(1 - hAbove / 420, .18, 1);
+        ctx.fillStyle = "rgba(0,0,0," + (.34 * sh).toFixed(2) + ")";
+        ctx.beginPath(); ctx.ellipse(s.x, s.y + 3, 26 * sh + 8, 10 * sh + 3, 0, 0, 7); ctx.fill();
+    }
+    if (state === ST.SINK && player.sink >= CFG.playerH + 32) return;  // 已完全没入洞中
+
+    // 帧选择
+    let fi = 0;
+    if (state === ST.SINK) fi = 1;
+    else if (state === ST.HOP) fi = stateT * 1000 < CFG.hopMs * 0.5 ? 2 : 1;
+    else if (state === ST.FALLING || state === ST.DYING) fi = player.drop < -CFG.skyHoleDrop * 0.45 ? 2 : 3;
+    else if (state === ST.LAND) fi = 4;
+    player.frame = fi;
+
+    const H = CFG.playerH;
+    let sq = 1, st = 1;
+    if (state === ST.CHARGING) { sq = 1; st = 1; }   // 只蹲不坠
+    if (state === ST.HOP) { sq = 1.05; st = .96; }
+    if (state === ST.LAND) { sq = 1 - player.squash * .22; st = 1 + player.squash * .16; }
+    if (state === ST.FALLING) { sq = 1.06; st = .95; }
+
+    ctx.save();
+    if (state === ST.SINK) {
+        // 沉入黑洞：只画洞口中心线以上的部分，下半身直接没入洞中，避免穿出洞外
+        ctx.beginPath();
+        ctx.rect(0, 0, VW, Math.max(0, s.y));
+        ctx.clip();
+    }
+    if (state === ST.FALLING && skyHole.active) {
+        // Only the part below the exit plane exists in this scene.
+        const portalY = projOf(skyHole.wx, skyHole.wy).y - CFG.skyHoleDrop;
+        const clipY = Math.max(0, portalY);
+        ctx.beginPath();
+        ctx.rect(0, clipY, VW, Math.max(0, VH - clipY));
+        ctx.clip();
+    }
+    ctx.translate(s.x, fy);
+    if (player.wobble > 0.01) ctx.rotate(Math.sin(stateT * 22) * .07 * player.wobble);
+    ctx.scale(st, sq);
+
+    if (spriteReady) {
+        const f = spriteFrames[fi];
+        const aspect = f.sw / f.sh;
+        const dw = H * aspect, dh = H;
+        ctx.drawImage(sprite, f.sx, f.sy, f.sw, f.sh, -dw / 2, -dh, dw, dh);
+    } else {
+        drawFallback(fi, H);
+    }
+    ctx.restore();
+}
+// 无素材时的矢量占位人物（3/4 背面）
+function drawFallback(fi, H) {
+    const crouch = fi === 1 ? .8 : fi === 4 ? .78 : 1;
+    const air = fi === 2 || fi === 3;
+    ctx.save();
+    ctx.scale(1, crouch);
+    ctx.fillStyle = "#3d4b63";                       // 斗篷
+    ctx.beginPath(); ctx.ellipse(0, -H * .42, H * .2, H * .3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#2c3547";                       // 头
+    ctx.beginPath(); ctx.arc(0, -H * .78, H * .15, 0, 7); ctx.fill();
+    ctx.fillStyle = "#e8e2d5";                       // 腿
+    ctx.fillRect(-H * .09, -H * .18, H * .07, H * .18 - (air ? H * .05 : 0));
+    ctx.fillRect(H * .02, -H * .18, H * .07, H * .18 - (air ? H * .05 : 0));
+    ctx.restore();
+}
+
+/* ------------------------- 绘制：UI 层 ------------------------- */
+function drawChargeUI() {
+    if (state !== ST.CHARGING) return;
+    const s = projOf(player.wx, player.wy);
+    // 蓄力条
+    const bw = 130, bh = 10, bx = s.x - bw / 2, by = s.y - CFG.playerH - 34;
+    ctx.fillStyle = "rgba(10,12,16,.65)";
+    roundRect(bx - 3, by - 3, bw + 6, bh + 6, 7); ctx.fill();
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    g.addColorStop(0, "#6fe3b8"); g.addColorStop(.6, "#ffd479"); g.addColorStop(1, "#ff7a6b");
+    ctx.fillStyle = g;
+    roundRect(bx, by, bw * power, bh, 5); ctx.fill();
+    if (!showLandingHint) return;
+    // 预测落点环
+    const d = jumpDist();
+    const lwx = player.wx + jumpDirPreview.x * d, lwy = player.wy + jumpDirPreview.y * d;
+    const res = findLanding(lwx, lwy);
+    const ls = projOf(lwx, lwy);
+    const ok = res.kind !== "miss";
+    ctx.strokeStyle = ok ? "rgba(126,240,200,.85)" : "rgba(255,122,107,.8)";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.ellipse(ls.x, ls.y, 20, 10, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(ls.x, ls.y, 6, 3, 0, 0, 7); ctx.stroke();
+}
+let jumpDirPreview = { x: 1, y: 0 };
+function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+}
+function drawPopups() {
+    for (const p of popups) {
+        const a = 1 - p.t / p.life;
+        ctx.font = "bold 30px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.textAlign = "center";
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = clamp(a * 1.4, 0, 1);
+        ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 8;
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
+}
+function drawOverlay(t) {
+    if (missionPlatform) {
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#d2bba3";
+        ctx.font = Math.max(30, 26 / viewScale) + "px 'STKaiti','KaiTi','FangSong',serif";
+        ctx.fillText("\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
+        ctx.restore();
+    }
+    if (!started && state === ST.IDLE) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(238,243,248," + (.6 + .3 * Math.sin(t * 2.6)).toFixed(2) + ")";
+        ctx.font = "bold " + Math.max(24, 20 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.fillText("按住蓄力 · 松开传送", VW / 2, VH * 0.78, VW * .9);
+        ctx.font = Math.max(14, 12 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.fillStyle = "rgba(238,243,248,.45)";
+        ctx.fillText("蓄得越久跳得越远 · 落在平台中心可得 PERFECT", VW / 2, VH * 0.78 + Math.max(26, 26 / viewScale), VW * .9);
+    }
+    if (state === ST.OVER) {
+        ctx.fillStyle = "rgba(8,10,13,.72)"; ctx.fillRect(0, 0, VW, VH);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#eef3f8";
+        ctx.font = "bold 44px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.fillText("坠入深渊", VW / 2, VH * 0.42);
+        ctx.font = "bold 26px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.fillStyle = "#7ef0c8";
+        ctx.fillText("本局得分 " + score + "   ·   最佳 " + best, VW / 2, VH * 0.42 + 46);
+        ctx.font = "18px 'PingFang SC','Microsoft YaHei',Arial";
+        ctx.fillStyle = "rgba(238,243,248," + (.5 + .35 * Math.sin(t * 3)).toFixed(2) + ")";
+        ctx.fillText("点击 / 空格 再来一次", VW / 2, VH * 0.42 + 92);
+    }
+    // 静音标识
+
+}
+
+/* ------------------------- 主渲染 ------------------------- */
+function render(t) {
+    drawBackground(t);
+
+    // 深度排序绘制列表
+    const list = [];
+    for (const p of platforms) {
+        list.push({ d: p.depth, fn: () => drawPlatform(p, t) });
+        if (p.easterEgg) list.push({ d: p.depth + 0.015, fn: () => drawEasterEgg(p) });
+    }
+    list.push({ d: platforms[curIdx].depth + 0.01, fn: () => drawNextHint(t) });
+    const groundD = platforms[curIdx].depth;
+    if (hole.active) {
+        list.push({ d: groundD + 0.02, fn: () => drawHole(hole.wx, hole.wy, hole.r, t, false) });
+        list.push({ d: groundD + 0.05, fn: () => drawHole(hole.wx, hole.wy, hole.r, t, true) });
+    }
+    // 人物深度取“所站/所落平台”，避免落点偏移导致深度反转而穿模
+    const airPlat = (state === ST.FALLING || state === ST.HOLE_OPEN || state === ST.DYING) && landInfo && landInfo.plat
+        ? landInfo.plat : platforms[curIdx];
+    if (skyHole.active) {
+        list.push({ d: airPlat.depth + 0.025, fn: () => drawHole(skyHole.wx, skyHole.wy, skyHole.r, t, false, -CFG.skyHoleDrop) });
+    }
+    list.push({ d: airPlat.depth + 0.03, fn: () => drawPlayer(t) });
+    list.sort((a, b) => a.d - b.d);
+    for (const it of list) it.fn();
+
+    // 空中黑洞：出现在落点平台正上方的高空，人物从这里坠落
+    // The exit is behind the player: reveal at its center plane,
+    // without a second half-ellipse pushing the silhouette to the lower rim.
+
+    // 粒子
+    for (const b of bursts) {
+        ctx.fillStyle = "rgba(" + b.c + "," + (1 - b.t / b.life).toFixed(2) + ")";
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.r * (1 - b.t / b.life * .5), 0, 7); ctx.fill();
+    }
+
+    drawVignette();
+    drawChargeUI();
+    drawPopups();
+    drawOverlay(t);
+}
+
+/* ------------------------- 主循环 ------------------------- */
+let last = performance.now();
+function loop(now) {
+    const dt = clamp((now - last) / 1000, 0, 0.05);
+    last = now;
+    jumpDirPreview = platforms[curIdx + 1]
+        ? { x: Math.sign(platforms[curIdx + 1].wx - platforms[curIdx].wx), y: Math.sign(platforms[curIdx + 1].wy - platforms[curIdx].wy) }
+        : { x: 1, y: 0 };
+    update(dt);
+    render(now / 1000);
+    requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
