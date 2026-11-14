@@ -73,6 +73,7 @@ const CFG = {
     spriteSrc: "player.png",      // 人物雪碧图
     easterEggSrc: "assets/easter-300.png",
     easterEggPlatform: 300,
+    rescueSuccessPlatform: 600,
     frameCount: 5,                // 竖向帧数
     tileHW: 96,                   // 平台顶面水平半径（已加宽）
     tileHWVar: 10,                // 平台大小随机浮动
@@ -503,7 +504,7 @@ function resolveLanding() {
     const info = landInfo;
     if (!info.plat) { state = ST.DYING; stateT = 0; player.fallV = 300; SFX.fail(); return; }
     const p = info.plat;
-    if (p.easterEgg) missionPlatform = p;
+    if (p.easterEgg || p.sequence === CFG.rescueSuccessPlatform) missionPlatform = p;
     // 落点收拢：向平台中心迈半步，消解上一跳遗留的横向偏移（容错手感）
     const pull = info.kind === "perfect" ? 0.9 : info.kind === "good" ? 0.5 : 0;
     player.wx = lerp(info.px, p.wx, pull);
@@ -816,7 +817,7 @@ function drawOverlay(t) {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#d2bba3";
         ctx.font = Math.max(30, 26 / viewScale) + "px 'STKaiti','KaiTi','FangSong',serif";
-        ctx.fillText("\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
+        ctx.fillText(missionPlatform.sequence === CFG.rescueSuccessPlatform ? "\u8425\u6551\u6210\u529f" : "\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
         ctx.restore();
     }
     if (!started && state === ST.IDLE) {
