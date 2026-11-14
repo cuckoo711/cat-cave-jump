@@ -66,9 +66,9 @@
 "use strict";
 /* =====================================================================
    2.5D 洞穴传送版跳一跳
-   素材接口：把竖向 5 帧等分长图（透明底）命名为 player.png 放在同级目录。
+   素材接口：把横向 5 帧等分长图（透明底）命名为 player.png 放在同级目录。
    帧顺序：① 自然站立 ② 蓄力下沉/起跳 ③ 腾空最高点 ④ 平缓下落 ⑤ 直接落地
-   若放入的是带纯色底的 player.jpg，会自动按四角颜色抠底。
+   通过 HTTP 访问时，带纯色底的 player.jpg 会自动按背景色抠底。
    ===================================================================== */
 
 /* ------------------------- 可调参数 ------------------------- */
@@ -144,70 +144,87 @@ let easterEggReady = false;
 easterEggImage.onload = () => { easterEggReady = true; };
 easterEggImage.onerror = () => { easterEggReady = false; };
 easterEggImage.src = CFG.easterEggSrc;
-function chromaKey(srcCanvas) {
-    const c = document.createElement("canvas");
-    c.width = srcCanvas.width; c.height = srcCanvas.height;
-    const g = c.getContext("2d");
-    g.drawImage(srcCanvas, 0, 0);
-    const img = g.getImageData(0, 0, c.width, c.height);
-    const d = img.data;
+
+// 内置贴图的帧边界和脚底锚点，供 file:// 禁止读取像素时使用。
+const bundledSpriteFrames = {
+    width: 2172,
+    height: 724,
+    player: [
+        { sx: 132, sy: 129, sw: 188, sh: 563, anchorX: 118 },
+        { sx: 529, sy: 124, sw: 238, sh: 561, anchorX: 137 },
+        { sx: 975, sy: 37, sw: 209, sh: 583, anchorX: 109.5 },
+        { sx: 1350, sy: 89, sw: 266, sh: 596, anchorX: 171 },
+        { sx: 1852, sy: 129, sw: 188, sh: 564, anchorX: 113 }
+    ],
+    rabbit: [
+        { sx: 127, sy: 172, sw: 209, sh: 532, anchorX: 123.5 },
+        { sx: 542, sy: 127, sw: 224, sh: 545, anchorX: 126 },
+        { sx: 959, sy: 61, sw: 234, sh: 535, anchorX: 119.5 },
+        { sx: 1393, sy: 47, sw: 195, sh: 656, anchorX: 92.5 },
+        { sx: 1832, sy: 176, sw: 210, sh: 528, anchorX: 115.5 }
+    ]
+};
+function chromaKey(d) {
     const br = d[0], bgc = d[1], bb = d[2];   // 左上角作为底色
     for (let i = 0; i < d.length; i += 4) {
         const dist = Math.abs(d[i] - br) + Math.abs(d[i + 1] - bgc) + Math.abs(d[i + 2] - bb);
         if (dist < 40) d[i + 3] = 0;
         else if (dist < 95) d[i + 3] = Math.round(255 * (dist - 40) / 55);
     }
-    g.putImageData(img, 0, 0);
-    return c;
 }
-function buildSprite(img, target) {
-    const tmp = document.createElement("canvas");
-    tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
-    tmp.getContext("2d").drawImage(img, 0, 0);
-    // file:// 直接打开时本地图片会被视为跨源，getImageData 会抛错；
-    // 我们的 player.png 已是透明底，抠底失败时直接用原图即可。
-    let use = tmp;
+function buildSprite(img, target, bundledFrames) {
+    const width = img.naturalWidth, height = img.naturalHeight;
+    let sheet = document.createElement("canvas");
+    sheet.width = width; sheet.height = height;
+    const sheetCtx = sheet.getContext("2d");
+    sheetCtx.drawImage(img, 0, 0);
+    let pixels;
     try {
-        const probe = tmp.getContext("2d").getImageData(0, 0, 1, 1).data;
-        if (probe[3] > 200) use = chromaKey(tmp);   // 不透明则按四角色抠底
-    } catch (e) {
-        console.warn("雪碧图抠底跳过（file:// 跨源限制），直接使用原图");
+        const imageData = sheetCtx.getImageData(0, 0, width, height);
+        if (imageData.data[3] > 200) {
+            chromaKey(imageData.data);
+            sheetCtx.putImageData(imageData, 0, 0);
+        }
+        pixels = imageData.data;
+    } catch (error) {
+        if (error.name !== "SecurityError") throw error;
+        sheet = img;  // 文件模式允许绘制原图，读取像素时才会触发安全限制。
     }
-    const sheet = use;
-    const fw = sheet.width / CFG.frameCount, fh = sheet.height;
-    const frames = [];
-    const pixels = sheet.getContext("2d").getImageData(0, 0, sheet.width, sheet.height).data;
-    for (let i = 0; i < CFG.frameCount; i++) {
+    const fallbackFrames = width === bundledSpriteFrames.width && height === bundledSpriteFrames.height
+        ? bundledFrames : null;
+    const fw = width / CFG.frameCount, fh = height;
+    const frames = Array.from({ length: CFG.frameCount }, (_, i) => {
         const start = Math.round(i * fw), end = Math.round((i + 1) * fw);
+        const fullFrame = { sx: start, sy: 0, sw: end - start, sh: fh };
+        if (!pixels) return fallbackFrames?.[i] ?? fullFrame;
         let left = end, right = start, top = fh, bottom = 0;
         for (let y = 0; y < fh; y++) for (let x = start; x < end; x++) {
-            if (pixels[(y * sheet.width + x) * 4 + 3] > 16) {
+            if (pixels[(y * width + x) * 4 + 3] > 16) {
                 left = Math.min(left, x); right = Math.max(right, x);
                 top = Math.min(top, y); bottom = Math.max(bottom, y);
             }
         }
-        const valid = right >= left && bottom >= top;
+        if (right < left || bottom < top) return fullFrame;
         let footLeft = right, footRight = left;
-        if (valid) for (let y = Math.max(top, bottom - Math.ceil((bottom - top) * .08)); y <= bottom; y++) {
-            for (let x = left; x <= right; x++) if (pixels[(y * sheet.width + x) * 4 + 3] > 128) {
+        for (let y = Math.max(top, bottom - Math.ceil((bottom - top) * .08)); y <= bottom; y++) {
+            for (let x = left; x <= right; x++) if (pixels[(y * width + x) * 4 + 3] > 128) {
                 footLeft = Math.min(footLeft, x); footRight = Math.max(footRight, x);
             }
         }
         const anchorX = footRight >= footLeft ? (footLeft + footRight) / 2 - left : (right - left + 1) / 2;
-        frames.push(valid ? { sx: left, sy: top, sw: right - left + 1, sh: bottom - top + 1, anchorX: anchorX }
-            : { sx: start, sy: 0, sw: end - start, sh: fh });
-    }
-    const referenceHeight = Math.max.apply(null, frames.map(f => f.sh));
-    frames.forEach(f => { f.referenceHeight = referenceHeight; });
+        return { sx: left, sy: top, sw: right - left + 1, sh: bottom - top + 1, anchorX };
+    });
+    const referenceHeight = Math.max(...frames.map(f => f.sh));
+    const renderFrames = frames.map(frame => ({ ...frame, referenceHeight }));
     if (target) {
-        target.image = sheet; target.frames = frames; target.ready = true;
+        target.image = sheet; target.frames = renderFrames; target.ready = true;
     } else {
-        sprite = sheet; spriteFrames = frames; spriteReady = true;
+        sprite = sheet; spriteFrames = renderFrames; spriteReady = true;
     }
 }
 (function loadSprite() {
     const img = new Image();
-    img.onload = () => buildSprite(img);
+    img.onload = () => buildSprite(img, null, bundledSpriteFrames.player);
     img.onerror = () => {                          // 退而求其次找 jpg
         const j = new Image();
         j.onload = () => buildSprite(j);
@@ -218,7 +235,7 @@ function buildSprite(img, target) {
 })();
 (function loadRabbitSprite() {
     const img = new Image();
-    img.onload = () => buildSprite(img, rabbitSprite);
+    img.onload = () => buildSprite(img, rabbitSprite, bundledSpriteFrames.rabbit);
     img.onerror = () => { rabbitSprite.ready = false; };
     img.src = CFG.rabbitSpriteSrc;
 })();
