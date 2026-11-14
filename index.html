@@ -52,7 +52,7 @@
 </style>
 </head>
 <body>
-<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small><span id="lives" role="img" aria-label="剩余救援 3 次">♥♥♥</span><small>v1.1.5</small></div>
+<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small><span id="lives" role="img" aria-label="剩余救援 3 次">♥♥♥</span><small>v1.1.6</small></div>
 <div id="voiceSubtitle" role="status" aria-live="polite"></div>
 <canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
 <div id="gameControls">
@@ -73,6 +73,7 @@
 
 /* ------------------------- 可调参数 ------------------------- */
 const CFG = {
+    rabbitSpriteSrc: "assets/player-rabbit.png",
     spriteSrc: "player.png",      // 人物雪碧图
     easterEggSrc: "assets/easter-300.png",
     easterEggPlatform: 300,
@@ -137,6 +138,7 @@ const projY = (wx, wy) => (wx + wy) * 0.5;
 let sprite = null;          // 处理好的透明 canvas
 let spriteFrames = [];      // 每帧 {sx, sy, sw, sh}
 let spriteReady = false;
+const rabbitSprite = { image: null, frames: [], ready: false };
 const easterEggImage = new Image();
 let easterEggReady = false;
 easterEggImage.onload = () => { easterEggReady = true; };
@@ -158,7 +160,7 @@ function chromaKey(srcCanvas) {
     g.putImageData(img, 0, 0);
     return c;
 }
-function buildSprite(img) {
+function buildSprite(img, target) {
     const tmp = document.createElement("canvas");
     tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
     tmp.getContext("2d").drawImage(img, 0, 0);
@@ -171,15 +173,15 @@ function buildSprite(img) {
     } catch (e) {
         console.warn("雪碧图抠底跳过（file:// 跨源限制），直接使用原图");
     }
-    sprite = use;
-    const fw = sprite.width / CFG.frameCount, fh = sprite.height;
-    spriteFrames = [];
-    const pixels = sprite.getContext("2d").getImageData(0, 0, sprite.width, sprite.height).data;
+    const sheet = use;
+    const fw = sheet.width / CFG.frameCount, fh = sheet.height;
+    const frames = [];
+    const pixels = sheet.getContext("2d").getImageData(0, 0, sheet.width, sheet.height).data;
     for (let i = 0; i < CFG.frameCount; i++) {
         const start = Math.round(i * fw), end = Math.round((i + 1) * fw);
         let left = end, right = start, top = fh, bottom = 0;
         for (let y = 0; y < fh; y++) for (let x = start; x < end; x++) {
-            if (pixels[(y * sprite.width + x) * 4 + 3] > 16) {
+            if (pixels[(y * sheet.width + x) * 4 + 3] > 16) {
                 left = Math.min(left, x); right = Math.max(right, x);
                 top = Math.min(top, y); bottom = Math.max(bottom, y);
             }
@@ -187,17 +189,21 @@ function buildSprite(img) {
         const valid = right >= left && bottom >= top;
         let footLeft = right, footRight = left;
         if (valid) for (let y = Math.max(top, bottom - Math.ceil((bottom - top) * .08)); y <= bottom; y++) {
-            for (let x = left; x <= right; x++) if (pixels[(y * sprite.width + x) * 4 + 3] > 128) {
+            for (let x = left; x <= right; x++) if (pixels[(y * sheet.width + x) * 4 + 3] > 128) {
                 footLeft = Math.min(footLeft, x); footRight = Math.max(footRight, x);
             }
         }
         const anchorX = footRight >= footLeft ? (footLeft + footRight) / 2 - left : (right - left + 1) / 2;
-        spriteFrames.push(valid ? { sx: left, sy: top, sw: right - left + 1, sh: bottom - top + 1, anchorX: anchorX }
+        frames.push(valid ? { sx: left, sy: top, sw: right - left + 1, sh: bottom - top + 1, anchorX: anchorX }
             : { sx: start, sy: 0, sw: end - start, sh: fh });
     }
-    const referenceHeight = Math.max.apply(null, spriteFrames.map(f => f.sh));
-    spriteFrames.forEach(f => { f.referenceHeight = referenceHeight; });
-    spriteReady = true;
+    const referenceHeight = Math.max.apply(null, frames.map(f => f.sh));
+    frames.forEach(f => { f.referenceHeight = referenceHeight; });
+    if (target) {
+        target.image = sheet; target.frames = frames; target.ready = true;
+    } else {
+        sprite = sheet; spriteFrames = frames; spriteReady = true;
+    }
 }
 (function loadSprite() {
     const img = new Image();
@@ -209,6 +215,12 @@ function buildSprite(img) {
         j.src = "player.jpg";
     };
     img.src = CFG.spriteSrc;
+})();
+(function loadRabbitSprite() {
+    const img = new Image();
+    img.onload = () => buildSprite(img, rabbitSprite);
+    img.onerror = () => { rabbitSprite.ready = false; };
+    img.src = CFG.rabbitSpriteSrc;
 })();
 
 /* ------------------------- 音效（WebAudio 合成，无外部文件） ------------------------- */
@@ -274,6 +286,7 @@ let skyHole = { wx: 0, wy: 0, r: 0, active: false };   // 落点高空洞
 let cam = { wx: 0, wy: 0 };
 let started = false;
 let missionPlatform = null;
+let rabbitForm = false, rabbitTransformPending = false, rabbitSubtitleTime = 0;
 
 const dust = [], bursts = [], popups = [];
 for (let i = 0; i < 70; i++) dust.push({ x: Math.random(), y: Math.random(), s: rand(.4, 1.6), p: Math.random() * 7, v: rand(.008, .03) });
@@ -351,6 +364,7 @@ function reset() {
     cam.wx = platforms[0].wx + 40; cam.wy = platforms[0].wy - 20;
     score = 0; combo = 0;
     missionPlatform = null;
+    rabbitForm = false; rabbitTransformPending = false; rabbitSubtitleTime = 0;
     document.getElementById("score").textContent = 0;
     state = ST.IDLE; stateT = 0; started = false;
     popups.length = 0; bursts.length = 0;
@@ -372,6 +386,7 @@ function pressStart() {
 function pressEnd() {
     if (state !== ST.CHARGING) return;
     if (power < 0.06) { state = ST.IDLE; hole.active = false; player.sink = 0; return; }  // 轻点取消
+    if (!rabbitForm && platforms[curIdx].sequence >= CFG.rescueSuccessPlatform) rabbitTransformPending = true;
     if (missionPlatform) {
         missionPlatform.easterEgg = false;
         missionPlatform = null;
@@ -482,6 +497,7 @@ const jumpDist = () => CFG.jumpMin + power * (CFG.jumpMax - CFG.jumpMin);
 
 /* ------------------------- 更新 ------------------------- */
 function update(dt) {
+    rabbitSubtitleTime = Math.max(0, rabbitSubtitleTime - dt);
     RecordedAudio.tick(state === ST.IDLE && started);
     stateT += dt;
     if (rescueMotion) {
@@ -542,7 +558,13 @@ function update(dt) {
         case ST.HOLE_OPEN: {
             skyHole.r = 1;
             hole.active = false;      // 脚下旧洞收拢
-            if (stateT > 0.3) { state = ST.FALLING; stateT = 0; player.drop = -CFG.skyHoleDrop; player.fallV = 0; hole.active = false; }
+            if (stateT > 0.3) {
+                // Switch only after the original body is hidden in the entrance.
+                if (rabbitTransformPending) {
+                    rabbitForm = true; rabbitTransformPending = false; rabbitSubtitleTime = 4.5;
+                }
+                state = ST.FALLING; stateT = 0; player.drop = -CFG.skyHoleDrop; player.fallV = 0; hole.active = false;
+            }
             break;
         }
         case ST.FALLING: {
@@ -893,12 +915,14 @@ function drawPlayer(t) {
     if (player.wobble > 0.01) ctx.rotate(Math.sin(stateT * 22) * .07 * player.wobble);
     ctx.scale(st * playerFacing(), sq);
 
-    if (spriteReady) {
-        const f = spriteFrames[fi];
+    const activeSprite = rabbitForm && rabbitSprite.ready ? rabbitSprite.image : sprite;
+    const activeFrames = rabbitForm && rabbitSprite.ready ? rabbitSprite.frames : spriteFrames;
+    if (activeSprite && (spriteReady || (rabbitForm && rabbitSprite.ready))) {
+        const f = activeFrames[fi];
         const aspect = f.sw / f.sh;
         const dh = H * f.sh / f.referenceHeight, dw = dh * aspect;
         const anchorX = typeof f.anchorX === "number" ? f.anchorX : f.sw / 2;
-        ctx.drawImage(sprite, f.sx, f.sy, f.sw, f.sh, -anchorX * dh / f.sh, -dh, dw, dh);
+        ctx.drawImage(activeSprite, f.sx, f.sy, f.sw, f.sh, -anchorX * dh / f.sh, -dh, dw, dh);
     } else {
         drawFallback(fi, H);
     }
@@ -967,13 +991,13 @@ function drawPopups() {
     }
 }
 function drawOverlay(t) {
-    if (missionPlatform) {
+    if (missionPlatform || rabbitSubtitleTime > 0) {
         ctx.save();
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#d2bba3";
         ctx.font = Math.max(30, 26 / viewScale) + "px 'STKaiti','KaiTi','FangSong',serif";
-        ctx.fillText(missionPlatform.sequence === CFG.rescueSuccessPlatform ? "\u8425\u6551\u6210\u529f" : "\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
+        ctx.fillText(rabbitSubtitleTime > 0 ? "也太执着了啊喂！" : missionPlatform.sequence === CFG.rescueSuccessPlatform ? "\u8425\u6551\u6210\u529f" : "\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
         ctx.restore();
     }
     if (!started && state === ST.IDLE) {
