@@ -8,8 +8,8 @@ Upload these files to the root of a repository, preserving the assets directory.
 In Settings > Pages, choose Deploy from a branch, main and /(root), then Save.
 Use the published website link to play. Opening index.html in the repository shows source.
 
-The current preview places the Easter egg on platform 20. The completion message
-and visitor disappear on the next valid jump. The intended final milestone is 300.
+Milestones on platforms 300 and 600 show completion and rescue messages. The message
+and visitor disappear on the next valid jump; gameplay then continues.
 
 ## Controls
 

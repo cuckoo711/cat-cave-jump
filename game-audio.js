@@ -2,7 +2,7 @@
 "use strict";
 const RecordedAudio = {
     ctx: null, master: null, buffers: {}, active: null, previous: {},
-    unlocked: false, nextIdle: Infinity, lastEvent: null, errors: [],
+    unlocked: false, nextIdle: Infinity, nextChatter: 0, lastEvent: null, errors: [],
     init() {
         try {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -18,7 +18,10 @@ const RecordedAudio = {
                         this.buffers[group].push({ ...clip, buffer });
                     } catch (error) { this.errors.push(clip.id + ': ' + error.message); }
                 }
-            }));
+            })).then(() => {
+                this.buffers.caution = (this.buffers.idle || []).filter(c => c.id === 'idle_05');
+                this.buffers.idle = (this.buffers.idle || []).filter(c => c.id !== 'idle_05');
+            });
         } catch (error) { this.errors.push(error.message); this.ready = Promise.resolve(); }
     },
     unlock() {
@@ -28,6 +31,8 @@ const RecordedAudio = {
     },
     deferIdle() { this.nextIdle = performance.now() + 8000 + Math.random() * 7000; },
     stopVoice() {
+        const subtitle = document.getElementById('voiceSubtitle');
+        if (subtitle) subtitle.textContent = '';
         if (!this.active) return;
         const current = this.active;
         this.active = null;
@@ -55,15 +60,36 @@ const RecordedAudio = {
         source.connect(gain).connect(this.master);
         const voice = { source, gain, group, id: clip.id };
         this.active = voice;
+        const subtitle = document.getElementById('voiceSubtitle');
+        if (subtitle && group === 'caution') subtitle.textContent = '不急，等我指示';
         source.onended = () => {
             source.disconnect(); gain.disconnect();
-            if (this.active === voice) this.active = null;
+            if (this.active === voice) {
+                this.active = null;
+                if (subtitle) subtitle.textContent = '';
+                if (voice.followup) this.play(voice.followup);
+            }
         };
         this.previous[group] = clip.id;
         this.lastEvent = { group, id: clip.id, at: performance.now() };
         source.start();
         this.deferIdle();
         return true;
+    },
+    afterLandingCaution() {
+        // Let the landing meow finish before the complete spoken sentence.
+        if (this.active && this.active.group === 'meow') this.active.followup = 'caution';
+        else this.play('caution');
+    },
+    afterLandingChatter() {
+        const now = performance.now();
+        if (document.hidden || SFX.muted || !this.unlocked || now < this.nextChatter) return;
+        // Never replace a current sentence or a higher-priority landing cue.
+        if (this.active && (this.active.group !== 'meow' || this.active.followup)) return;
+        if (Math.random() >= .3) return;
+        this.nextChatter = now + 12000 + Math.random() * 6000;
+        if (this.active) this.active.followup = 'idle';
+        else this.play('idle');
     },
     tick(isIdle) {
         if (!isIdle || document.hidden || !this.unlocked || SFX.muted) {

@@ -43,6 +43,8 @@
         letter-spacing: 1px;
     }
     #ui small { display: block; font-size: 14px; font-weight: normal; opacity: .65; margin-top: 4px; letter-spacing: 2px; }
+    #lives { display: block; margin-top: 10px; font-size: 26px; color: #f28e9b; letter-spacing: 5px; }
+    #voiceSubtitle { position: fixed; z-index: 3; left: 12px; right: 12px; bottom: 64px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); text-align: center; pointer-events: none; color: #fff0c9; font: bold 21px/1.5 "Microsoft YaHei", sans-serif; text-shadow: 0 2px 5px #000; }
     @media (max-width: 600px), (max-height: 500px) {
         #ui { font-size: 22px; }
         #ui small { font-size: 12px; }
@@ -50,7 +52,8 @@
 </style>
 </head>
 <body>
-<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small></div>
+<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small><span id="lives" role="img" aria-label="剩余救援 3 次">♥♥♥</span><small>v1.1.5</small></div>
+<div id="voiceSubtitle" role="status" aria-live="polite"></div>
 <canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
 <div id="gameControls">
 <button id="muteButton" type="button" aria-pressed="false" aria-label="静音">静音</button>
@@ -78,8 +81,9 @@ const CFG = {
     tileHW: 96,                   // 平台顶面水平半径（已加宽）
     tileHWVar: 10,                // 平台大小随机浮动
     tileDepth: 46,                // 平台厚度
-    gapMin: 170,                  // 平台间距（已减小）
-    gapMax: 240,
+    gapMin: 280,                  // Wider spacing in the introductory section.
+    gapMax: 300,
+    difficultyStart: 150,         // Count forward platforms, never score/combo points.
     chargeMs: 1500,               // 蓄满所需毫秒（已调慢，手感平缓）
     jumpMin: 45,                  // 世界距离：最小跳跃
     jumpMax: 320,                 // 世界距离：最大跳跃
@@ -168,9 +172,31 @@ function buildSprite(img) {
         console.warn("雪碧图抠底跳过（file:// 跨源限制），直接使用原图");
     }
     sprite = use;
-    const fw = sprite.width, fh = sprite.height / CFG.frameCount;
+    const fw = sprite.width / CFG.frameCount, fh = sprite.height;
     spriteFrames = [];
-    for (let i = 0; i < CFG.frameCount; i++) spriteFrames.push({ sx: 0, sy: i * fh, sw: fw, sh: fh });
+    const pixels = sprite.getContext("2d").getImageData(0, 0, sprite.width, sprite.height).data;
+    for (let i = 0; i < CFG.frameCount; i++) {
+        const start = Math.round(i * fw), end = Math.round((i + 1) * fw);
+        let left = end, right = start, top = fh, bottom = 0;
+        for (let y = 0; y < fh; y++) for (let x = start; x < end; x++) {
+            if (pixels[(y * sprite.width + x) * 4 + 3] > 16) {
+                left = Math.min(left, x); right = Math.max(right, x);
+                top = Math.min(top, y); bottom = Math.max(bottom, y);
+            }
+        }
+        const valid = right >= left && bottom >= top;
+        let footLeft = right, footRight = left;
+        if (valid) for (let y = Math.max(top, bottom - Math.ceil((bottom - top) * .08)); y <= bottom; y++) {
+            for (let x = left; x <= right; x++) if (pixels[(y * sprite.width + x) * 4 + 3] > 128) {
+                footLeft = Math.min(footLeft, x); footRight = Math.max(footRight, x);
+            }
+        }
+        const anchorX = footRight >= footLeft ? (footLeft + footRight) / 2 - left : (right - left + 1) / 2;
+        spriteFrames.push(valid ? { sx: left, sy: top, sw: right - left + 1, sh: bottom - top + 1, anchorX: anchorX }
+            : { sx: start, sy: 0, sw: end - start, sh: fh });
+    }
+    const referenceHeight = Math.max.apply(null, spriteFrames.map(f => f.sh));
+    spriteFrames.forEach(f => { f.referenceHeight = referenceHeight; });
     spriteReady = true;
 }
 (function loadSprite() {
@@ -228,6 +254,12 @@ const ST = { IDLE: 0, CHARGING: 1, SINK: 2, HOLE_OPEN: 3, FALLING: 4, LAND: 5, D
 let state = ST.IDLE;
 let stateT = 0;                 // 当前状态已持续时间(s)
 let score = 0, combo = 0;
+let lives = 3, rescueMotion = null;
+function syncLives() {
+    const node = document.getElementById("lives");
+    node.textContent = "♥".repeat(lives) + "♡".repeat(3 - lives);
+    node.setAttribute("aria-label", "剩余救援 " + lives + " 次");
+}
 let best = +(localStorage.getItem("cavejump_best") || 0);
 document.getElementById("best").textContent = "最佳 " + best;
 
@@ -246,9 +278,14 @@ let missionPlatform = null;
 const dust = [], bursts = [], popups = [];
 for (let i = 0; i < 70; i++) dust.push({ x: Math.random(), y: Math.random(), s: rand(.4, 1.6), p: Math.random() * 7, v: rand(.008, .03) });
 
+function platformDifficulty(sequence) {
+    if (sequence <= CFG.difficultyStart) return { size: 1, minGap: CFG.gapMin, maxGap: CFG.gapMax };
+    const progress = clamp((sequence - CFG.difficultyStart) / 100, 0, 1);
+    return { size: .92 - .20 * progress, minGap: 280 - 10 * progress, maxGap: 315 + 3 * progress };
+}
 function newPlatform(from, dir, gap) {
     const sequence = from.sequence + 1;
-    const hw = CFG.tileHW + rand(-CFG.tileHWVar, CFG.tileHWVar);
+    const hw = (CFG.tileHW + rand(-CFG.tileHWVar, CFG.tileHWVar)) * platformDifficulty(sequence).size;
     return {
         wx: from.wx + dir.x * gap, wy: from.wy + dir.y * gap,
         hw, hh: hw / 2, depth: 0,
@@ -256,29 +293,56 @@ function newPlatform(from, dir, gap) {
         tint: rand(-10, 10), deco: Math.random() < .45 ? Math.floor(rand(0, 3)) : -1
     };
 }
+const routeDirections = [{ x: 0, y: -1 }, { x: -1, y: 0 }];
 let dirHistory = [];
+let routeDirection = null, routeRemaining = 0;
 function nextDir() {
-    const opts = [{ x: 1, y: 0 }, { x: 0, y: -1 }];
-    let d = opts[Math.random() < .5 ? 0 : 1];
-    if (dirHistory.length >= 2 && dirHistory[dirHistory.length - 1] === d && dirHistory[dirHistory.length - 2] === d)
-        d = opts[1 - opts.indexOf(d)];
+    if (routeRemaining <= 0) {
+        // Keep 4-7-platform stretches, alternating only between the two upward diagonals.
+        const options = routeDirection === null ? routeDirections
+            : routeDirections.filter(direction => direction !== routeDirection);
+        routeDirection = options[Math.floor(Math.random() * options.length)];
+        routeRemaining = 4 + Math.floor(Math.random() * 4);
+    }
+    routeRemaining--;
+    const d = routeDirection;
     dirHistory.push(d); if (dirHistory.length > 4) dirHistory.shift();
     return d;
 }
 function ensurePlatforms() {
     while (platforms.length < curIdx + 5) {
         const last = platforms[platforms.length - 1];
-        platforms.push(newPlatform(last, nextDir(), rand(CFG.gapMin, CFG.gapMax)));
+        const difficulty = platformDifficulty(last.sequence + 1);
+        const direction = nextDir();
+        let candidate = null;
+        for (let attempt = 0; attempt < 30; attempt++) {
+            const p = newPlatform(last, direction, rand(difficulty.minGap, difficulty.maxGap));
+            if (platforms.every(other => platformsSeparated(p, other))) { candidate = p; break; }
+        }
+        // The upper-right escape keeps progress upward and stays within jump range.
+        if (!candidate) {
+            candidate = newPlatform(last, routeDirections[0], CFG.jumpMax - 5);
+            routeDirection = routeDirections[0]; routeRemaining = 3;
+        }
+        platforms.push(candidate);
     }
     if (curIdx > 2) platforms.splice(0, curIdx - 2), curIdx = 2, reindex();
+}
+function platformsSeparated(a, b) {
+    const dx = Math.abs(projX(a.wx, a.wy) - projX(b.wx, b.wy));
+    const dy = Math.abs(projY(a.wx, a.wy) - projY(b.wx, b.wy));
+    // Conservative separation for the diamond top plus the visible stone sides.
+    return dx / (a.hw + b.hw + 24) + Math.max(0, dy - CFG.tileDepth) / (a.hh + b.hh + 12) > 1;
 }
 function reindex() { platforms.forEach(p => p.depth = p.wx + p.wy); }
 
 function reset() {
+    lives = 3; rescueMotion = null; syncLives();
+    RecordedAudio.nextChatter = performance.now() + 5000;
     RecordedAudio.stopVoice();
     RecordedAudio.deferIdle();
     platforms = [{ sequence: 0, easterEgg: false, wx: 0, wy: 0, hw: CFG.tileHW + 6, hh: (CFG.tileHW + 6) / 2, tint: 0, deco: -1 }];
-    dirHistory = [];
+    dirHistory = []; routeDirection = null; routeRemaining = 0;
     curIdx = 0;
     ensurePlatforms(); reindex();
     player.wx = 0; player.wy = 0; player.sink = 0; player.drop = 0; player.fallV = 0; player.squash = 0; player.wobble = 0;
@@ -321,7 +385,12 @@ function nextDirForJump() {
     // 朝下一个平台的方向跳
     const nxt = platforms[curIdx + 1];
     const dx = nxt.wx - platforms[curIdx].wx, dy = nxt.wy - platforms[curIdx].wy;
-    return { x: Math.sign(dx), y: Math.sign(dy) };
+    const span = Math.abs(dx) + Math.abs(dy) || 1;
+    return { x: dx / span, y: dy / span };
+}
+function playerFacing() {
+    const direction = state === ST.IDLE || state === ST.CHARGING ? nextDirForJump() : jumpDir;
+    return projX(direction.x, direction.y) < 0 ? -1 : 1;
 }
 let activePointer = null, keyboardHeld = false;
 function cancelCharge() {
@@ -389,7 +458,13 @@ window.addEventListener("contextmenu", e => e.preventDefault());
 function screenDelta(p, wx, wy) { return { dx: projX(wx, wy) - projX(p.wx, p.wy), dy: projY(wx, wy) - projY(p.wx, p.wy) }; }
 function insideDiamond(p, wx, wy, scale) {
     const d = screenDelta(p, wx, wy);
-    return Math.abs(d.dx) / p.hw + Math.abs(d.dy) / p.hh <= scale;
+    if (Math.abs(d.dx) / p.hw + Math.abs(d.dy) / p.hh <= scale) return true;
+    const e = p.extension;
+    if (!e || e.progress <= 0) return false;
+    const candidates = [0, e.progress];
+    if (e.dx) candidates.push(clamp(d.dx / e.dx, 0, e.progress));
+    if (e.dy) candidates.push(clamp(d.dy / e.dy, 0, e.progress));
+    return candidates.some(t => Math.abs(d.dx - e.dx * t) / p.hw + Math.abs(d.dy - e.dy * t) / p.hh <= scale);
 }
 function findLanding(wx, wy) {
     let bestP = null, bestD = 1e9, kind = "miss";
@@ -409,6 +484,20 @@ const jumpDist = () => CFG.jumpMin + power * (CFG.jumpMax - CFG.jumpMin);
 function update(dt) {
     RecordedAudio.tick(state === ST.IDLE && started);
     stateT += dt;
+    if (rescueMotion) {
+        rescueMotion.t = Math.min(1, rescueMotion.t + dt / .48);
+        const a = rescueMotion.t * rescueMotion.t * (3 - 2 * rescueMotion.t);
+        if (rescueMotion.type === "extend") {
+            rescueMotion.plat.extension.progress = a;
+        } else {
+            for (const item of rescueMotion.items) {
+                item.plat.wx = item.wx + rescueMotion.dx * a;
+                item.plat.wy = item.wy + rescueMotion.dy * a;
+            }
+            reindex();
+        }
+        if (rescueMotion.t >= 1) rescueMotion = null;
+    }
     // 相机目标
     let tx, ty;
     if (state === ST.HOLE_OPEN || state === ST.FALLING || state === ST.DYING) {
@@ -442,6 +531,7 @@ function update(dt) {
                 const lwx = player.wx + jumpDir.x * d, lwy = player.wy + jumpDir.y * d;
                 const res = findLanding(lwx, lwy);
                 landInfo = { plat: res.plat, px: lwx, py: lwy, kind: res.kind };
+                prepareRescue(landInfo);
                 player.wx = lwx; player.wy = lwy;      // 水平位置同步到落点，垂直由 drop 控制
                 skyHole.wx = lwx; skyHole.wy = lwy; skyHole.active = true; skyHole.r = 1;
                 state = ST.HOLE_OPEN; stateT = 0;
@@ -467,6 +557,12 @@ function update(dt) {
         case ST.LAND: {
             player.squash = Math.max(0, player.squash - dt * 4.2);
             player.wobble *= Math.pow(0.02, dt);
+            if (landInfo && landInfo.extended) {
+                // Cross the rescued ledge before the next jump so its original distance stays reachable.
+                const t = clamp(stateT / .34, 0, 1), a = t * t * (3 - 2 * t);
+                player.wx = lerp(landInfo.px, landInfo.plat.wx, a);
+                player.wy = lerp(landInfo.py, landInfo.plat.wy, a);
+            }
             if (landInfo && landInfo.kind === "edge") {
                 const p = landInfo.plat;
                 player.wx = lerp(player.wx, p.wx, 1 - Math.pow(0.05, dt));
@@ -499,9 +595,48 @@ function update(dt) {
     for (const m of dust) { m.y -= m.v * dt * 8; m.p += dt; if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); } }
 }
 
+function prepareRescue(info) {
+    if (info.plat || info.rescued || lives <= 0) return false;
+    const target = platforms[curIdx + 1];
+    if (!target) return false;
+    lives--; syncLives();
+    const origin = platforms[curIdx];
+    const routeX = target.wx - origin.wx, routeY = target.wy - origin.wy;
+    const shortfall = (info.px - target.wx) * routeX + (info.py - target.wy) * routeY < 0;
+    if (shortfall) {
+        // Sweep the target's surface toward the feet, anchored at its original center.
+        const d = screenDelta(target, info.px, info.py);
+        const distance = Math.abs(d.dx) / target.hw + Math.abs(d.dy) / target.hh;
+        const length = Math.max(0, 1 - .65 / Math.max(distance, .001));
+        target.extension = { dx: d.dx * length, dy: d.dy * length, progress: 0 };
+        rescueMotion = { type: "extend", t: 0, plat: target };
+        info.extended = true;
+    } else {
+        rescueMotion = {
+            type: "move", t: 0, dx: info.px - target.wx, dy: info.py - target.wy,
+            items: platforms.slice(curIdx + 1).map(p => ({ plat: p, wx: p.wx, wy: p.wy }))
+        };
+    }
+    info.plat = target; info.kind = "rescue"; info.rescued = true;
+    return true;
+}
 function resolveLanding() {
     skyHole.active = false;
     const info = landInfo;
+    // Recheck at the actual contact frame, including late or resumed landings.
+    if (!info.plat) prepareRescue(info);
+    if (info.rescued && rescueMotion) {
+        if (rescueMotion.type === "extend") {
+            rescueMotion.plat.extension.progress = 1;
+        } else {
+            for (const item of rescueMotion.items) {
+                item.plat.wx = item.wx + rescueMotion.dx;
+                item.plat.wy = item.wy + rescueMotion.dy;
+            }
+            reindex();
+        }
+        rescueMotion = null;
+    }
     if (!info.plat) { state = ST.DYING; stateT = 0; player.fallV = 300; SFX.fail(); return; }
     const p = info.plat;
     if (p.easterEgg || p.sequence === CFG.rescueSuccessPlatform) missionPlatform = p;
@@ -512,9 +647,11 @@ function resolveLanding() {
     player.squash = 1;
     state = ST.LAND; stateT = 0;
     SFX.land();
+    if (info.kind === "edge" || info.kind === "rescue") RecordedAudio.afterLandingCaution();
     dustBurst(projOf(info.px, info.py), info.kind === "perfect" ? 26 : 14);
     const idx = platforms.indexOf(p);
     if (idx > curIdx) {
+        if (info.kind !== "edge" && info.kind !== "rescue") RecordedAudio.afterLandingChatter();
         const gained = idx - curIdx;
         curIdx = idx;
         ensurePlatforms();
@@ -527,6 +664,8 @@ function resolveLanding() {
         } else if (info.kind === "edge") {
             combo = 0; score += gained;
             popup("好险 +" + gained, "#ffd479");
+        } else if (info.kind === "rescue") {
+            combo = 0; score += gained;
         } else {
             combo = 0; score += gained;
             popup("+" + gained, "#e8eef5");
@@ -595,29 +734,45 @@ function drawVignette() {
 }
 
 /* ------------------------- 绘制：平台 ------------------------- */
+function platformOutline(p) {
+    const base = [{x:0,y:-p.hh},{x:p.hw,y:0},{x:0,y:p.hh},{x:-p.hw,y:0}];
+    if (!p.extension || p.extension.progress <= 0) return base;
+    const dx = p.extension.dx * p.extension.progress, dy = p.extension.dy * p.extension.progress;
+    const points = base.concat(base.map(q => ({x:q.x+dx,y:q.y+dy}))).sort((a,b)=>a.x-b.x || a.y-b.y);
+    const cross = (a,b,c)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
+    const lower=[], upper=[];
+    for (const q of points) {
+        while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], q) <= 0) lower.pop();
+        lower.push(q);
+    }
+    for (let i=points.length-1;i>=0;i--) {
+        const q=points[i];
+        while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], q) <= 0) upper.pop();
+        upper.push(q);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+}
 function drawPlatform(p, t) {
     const s = projOf(p.wx, p.wy);
     const hw = p.hw, hh = p.hh, D = CFG.tileDepth;
     const base = 168 + p.tint;
-    // 左侧面
-    ctx.fillStyle = "rgb(" + (base * .34 | 0) + "," + (base * .37 | 0) + "," + (base * .42 | 0) + ")";
-    ctx.beginPath();
-    ctx.moveTo(s.x - hw, s.y); ctx.lineTo(s.x, s.y + hh); ctx.lineTo(s.x, s.y + hh + D); ctx.lineTo(s.x - hw, s.y + D);
-    ctx.closePath(); ctx.fill();
-    // 右侧面
-    ctx.fillStyle = "rgb(" + (base * .24 | 0) + "," + (base * .26 | 0) + "," + (base * .31 | 0) + ")";
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y + hh); ctx.lineTo(s.x + hw, s.y); ctx.lineTo(s.x + hw, s.y + D); ctx.lineTo(s.x, s.y + hh + D);
-    ctx.closePath(); ctx.fill();
-    // 顶面
+    const outline = platformOutline(p);
+    // Front-facing side walls follow the same extended outline as the top.
+    for (let i=0;i<outline.length;i++) {
+        const a=outline[i], b=outline[(i+1)%outline.length];
+        if (b.x >= a.x) continue;
+        const shade = b.y > a.y ? [.24,.26,.31] : [.34,.37,.42];
+        ctx.fillStyle = "rgb(" + shade.map(v=>base*v|0).join(",") + ")";
+        ctx.beginPath();ctx.moveTo(s.x+a.x,s.y+a.y);ctx.lineTo(s.x+b.x,s.y+b.y);
+        ctx.lineTo(s.x+b.x,s.y+b.y+D);ctx.lineTo(s.x+a.x,s.y+a.y+D);ctx.closePath();ctx.fill();
+    }
     const tg = ctx.createLinearGradient(s.x - hw, s.y - hh, s.x + hw, s.y + hh);
     tg.addColorStop(0, "rgb(" + (base + 26 | 0) + "," + (base + 30 | 0) + "," + (base + 36 | 0) + ")");
     tg.addColorStop(1, "rgb(" + (base - 14 | 0) + "," + (base - 12 | 0) + "," + (base - 8 | 0) + ")");
-    ctx.fillStyle = tg;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y - hh); ctx.lineTo(s.x + hw, s.y); ctx.lineTo(s.x, s.y + hh); ctx.lineTo(s.x - hw, s.y);
-    ctx.closePath(); ctx.fill();
-    // 顶面内描边 + 裂纹
+    ctx.fillStyle=tg;ctx.beginPath();
+    outline.forEach((q,i)=>{if(i===0)ctx.moveTo(s.x+q.x,s.y+q.y);else ctx.lineTo(s.x+q.x,s.y+q.y);});
+    ctx.closePath();ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(s.x, s.y - hh * .72); ctx.lineTo(s.x + hw * .72, s.y); ctx.lineTo(s.x, s.y + hh * .72); ctx.lineTo(s.x - hw * .72, s.y);
@@ -736,13 +891,14 @@ function drawPlayer(t) {
     }
     ctx.translate(s.x, fy);
     if (player.wobble > 0.01) ctx.rotate(Math.sin(stateT * 22) * .07 * player.wobble);
-    ctx.scale(st, sq);
+    ctx.scale(st * playerFacing(), sq);
 
     if (spriteReady) {
         const f = spriteFrames[fi];
         const aspect = f.sw / f.sh;
-        const dw = H * aspect, dh = H;
-        ctx.drawImage(sprite, f.sx, f.sy, f.sw, f.sh, -dw / 2, -dh, dw, dh);
+        const dh = H * f.sh / f.referenceHeight, dw = dh * aspect;
+        const anchorX = typeof f.anchorX === "number" ? f.anchorX : f.sw / 2;
+        ctx.drawImage(sprite, f.sx, f.sy, f.sw, f.sh, -anchorX * dh / f.sh, -dh, dw, dh);
     } else {
         drawFallback(fi, H);
     }
@@ -834,7 +990,7 @@ function drawOverlay(t) {
         ctx.textAlign = "center";
         ctx.fillStyle = "#eef3f8";
         ctx.font = "bold 44px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillText("坠入深渊", VW / 2, VH * 0.42);
+        ctx.fillText("营救失败", VW / 2, VH * 0.42);
         ctx.font = "bold 26px 'PingFang SC','Microsoft YaHei',Arial";
         ctx.fillStyle = "#7ef0c8";
         ctx.fillText("本局得分 " + score + "   ·   最佳 " + best, VW / 2, VH * 0.42 + 46);
@@ -893,9 +1049,7 @@ let last = performance.now();
 function loop(now) {
     const dt = clamp((now - last) / 1000, 0, 0.05);
     last = now;
-    jumpDirPreview = platforms[curIdx + 1]
-        ? { x: Math.sign(platforms[curIdx + 1].wx - platforms[curIdx].wx), y: Math.sign(platforms[curIdx + 1].wy - platforms[curIdx].wy) }
-        : { x: 1, y: 0 };
+    jumpDirPreview = platforms[curIdx + 1] ? nextDirForJump() : { x: 0, y: -1 };
     update(dt);
     render(now / 1000);
     requestAnimationFrame(loop);
