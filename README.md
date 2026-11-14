@@ -1,4 +1,4 @@
-# Cat Cave Jump
+# 仙人跳 · Fairy jump
 
 Browser game with touch and keyboard controls. Hold to charge and release to jump.
 
