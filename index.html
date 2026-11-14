@@ -21,7 +21,7 @@
     #gameControls {
         position: fixed; z-index: 2;
         display: flex; flex-direction: column; gap: 8px;
-        top: max(12px, env(safe-area-inset-top));
+        bottom: max(12px, env(safe-area-inset-bottom));
         right: max(12px, env(safe-area-inset-right));
     }
     #gameControls button {
@@ -43,17 +43,81 @@
         letter-spacing: 1px;
     }
     #ui small { display: block; font-size: 14px; font-weight: normal; opacity: .65; margin-top: 4px; letter-spacing: 2px; }
-    #lives { display: block; margin-top: 10px; font-size: 26px; color: #f28e9b; letter-spacing: 5px; }
-    #voiceSubtitle { position: fixed; z-index: 3; left: 12px; right: 12px; bottom: 64px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); text-align: center; pointer-events: none; color: #fff0c9; font: bold 21px/1.5 "Microsoft YaHei", sans-serif; text-shadow: 0 2px 5px #000; }
+    #ui .correctionLabel { margin-top: 9px; }
+    #lives { display: block; margin-top: 2px; font-size: 26px; color: #f28e9b; letter-spacing: 5px; }
+    #missionHud {
+        position: fixed; z-index: 1; pointer-events: none;
+        top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
+        box-sizing: border-box; width: min(298px, calc(100vw - 118px));
+        padding: 11px 12px 9px; border-radius: 12px; border: 1px solid #445954;
+        background: #101b1bed; color: #e6f1ef;
+        font: 12px/1.4 "PingFang SC", "Microsoft YaHei", sans-serif;
+        font-variant-numeric: tabular-nums;
+    }
+    #missionHud header, #missionHud footer, #missionHud dl { display: flex; justify-content: space-between; gap: 6px; }
+    #missionPhase { font-size: 13px; font-weight: 700; color: #a6ebd8; }
+    #missionHud footer, #missionHud dt, #missionHud header span { color: #b0c0bc; }
+    #missionHud dl { margin: 8px 0 6px; }
+    #missionHud dd { margin: 0; font-size: clamp(14px, 2.8vw, 20px); font-weight: 700; white-space: nowrap; }
+    #missionMap { display: block; width: 100%; height: 58px; }
+    #missionCorrection[data-active="true"] { color: #ffcb86; }
     @media (max-width: 600px), (max-height: 500px) {
         #ui { font-size: 22px; }
         #ui small { font-size: 12px; }
+        #missionHud { padding: 7px 8px; }
+    }
+    @media (max-width: 600px) {
+        #ui { max-width: 86px; }
+        #score { display: block; }
+        #ui small { letter-spacing: .5px; }
+    }
+    @media (max-height: 500px) {
+        #missionHud { width: min(248px, calc(100vw - 118px)); }
+        #missionMap { height: 46px; }
+        #gameControls { flex-direction: row; }
+    }
+    @media (max-width: 600px) and (orientation: portrait) {
+        #ui, #missionHud, #gameControls {
+            left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
+        }
+        #ui {
+            top: max(8px, env(safe-area-inset-top)); z-index: 1;
+            display: flex; justify-content: space-between; align-items: center; gap: 6px;
+            max-width: none; padding: 0 10px; height: 36px;
+            border: 1px solid #445954; border-radius: 10px; background: #101b1bed;
+            font-size: 15px; letter-spacing: 0; font-variant-numeric: tabular-nums;
+        }
+        #ui small { margin: 0; letter-spacing: 0; }
+        #ui .buildVersion { display: none; }
+        #score { display: inline; }
+        #ui .landingBudget { display: flex; align-items: center; gap: 5px; }
+        #ui .correctionLabel { margin: 0; }
+        #lives { margin: 0; font-size: 18px; letter-spacing: 2px; }
+        #missionHud { top: calc(max(8px, env(safe-area-inset-top)) + 44px); width: auto; padding: 7px 9px; }
+        #missionHud dd { font-size: 16px; }
+        #missionHud dl { margin: 5px 0 4px; }
+        #missionMap { height: 46px; }
+        #gameControls { flex-direction: row; justify-content: flex-end; }
     }
 </style>
 </head>
 <body>
-<div id="ui">得分: <span id="score">0</span><small id="best">最佳 0</small><span id="lives" role="img" aria-label="剩余救援 3 次">♥♥♥</span><small>v1.1.6</small></div>
-<div id="voiceSubtitle" role="status" aria-live="polite"></div>
+<div id="ui">
+    <div>得分 <span id="score">0</span></div>
+    <small id="best">最佳 0</small>
+    <div class="landingBudget"><small class="correctionLabel" aria-hidden="true">师傅修正</small><span id="lives" role="img" aria-label="师傅修正剩余 3 次">♥♥♥</span></div>
+    <small class="buildVersion">v1.1.6</small>
+</div>
+<section id="missionHud" aria-label="往返任务与小地图">
+    <header><strong id="missionPhase" role="status">去程 · 任务点</strong><span>单程 15 km</span></header>
+    <dl>
+        <div><dt>距目标</dt><dd id="missionRemaining">15.00 km</dd></div>
+        <div><dt>已掘进</dt><dd id="missionDistance">0 m</dd></div>
+        <div><dt>上一跳</dt><dd id="missionJump">0 m</dd></div>
+    </dl>
+    <canvas id="missionMap" width="540" height="116" role="img" aria-label="任务路线俯视图"></canvas>
+    <footer><span id="missionDepth">相对深度 -1800 m</span><span id="missionCorrection">航向矫正 0 次</span></footer>
+</section>
 <canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
 <div id="gameControls">
 <button id="muteButton" type="button" aria-pressed="false" aria-label="静音">静音</button>
@@ -62,6 +126,7 @@
 
 <script src="audio-bank.js"></script>
 <script src="game-audio.js"></script>
+<script src="tunnel-mission.js"></script>
 <script>
 "use strict";
 /* =====================================================================
@@ -72,44 +137,67 @@
    ===================================================================== */
 
 /* ------------------------- 可调参数 ------------------------- */
+const SCENE_UNITS_PER_METRE = 72;
 const CFG = {
     rabbitSpriteSrc: "assets/player-rabbit.png",
+    playerMotionSrc: "assets/player-motion.png",
+    rabbitMotionSrc: "assets/player-rabbit-motion.png",
     spriteSrc: "player.png",      // 人物雪碧图
     easterEggSrc: "assets/easter-300.png",
-    easterEggPlatform: 300,
-    rescueSuccessPlatform: 600,
-    frameCount: 5,                // 竖向帧数
-    tileHW: 96,                   // 平台顶面水平半径（已加宽）
-    tileHWVar: 10,                // 平台大小随机浮动
-    tileDepth: 46,                // 平台厚度
-    gapMin: 280,                  // Wider spacing in the introductory section.
-    gapMax: 300,
-    difficultyStart: 150,         // Count forward platforms, never score/combo points.
+    undergroundSrc: "assets/underground-strata.png",
+    frameCount: 5,                // 横向帧数
+    cavityRadius: 1.25 * SCENE_UNITS_PER_METRE,
+    cavityRadiusVar: .025 * SCENE_UNITS_PER_METRE,
+    cavityHorizontalRadius: 1.08,
+    cavityCenterHeight: .84,
+    cavityVerticalRadius: .96,
+    plannedLandingTolerance: 8,
+    freeOverlap: 1 / 3,
+    landingCorrectionLimit: 3,
+    entranceOffset: 30,
+    entranceMinRise: 12,
+    startDepth: -1800,
+    gapMin: 8 * SCENE_UNITS_PER_METRE,
+    gapMax: 8.8 * SCENE_UNITS_PER_METRE,
+    difficultyStart: 150,         // Count cavities reached, independently of score.
     chargeMs: 1500,               // 蓄满所需毫秒（已调慢，手感平缓）
-    jumpMin: 45,                  // 世界距离：最小跳跃
-    jumpMax: 320,                 // 世界距离：最大跳跃
-    skyHoleDrop: 250,             // 空中黑洞高度（像素，保证人物钻出时完整可见）
+    jumpMin: 1.3 * SCENE_UNITS_PER_METRE, // 场景距离。任务里程按蓄力另行计算。
+    jumpMax: 9 * SCENE_UNITS_PER_METRE,
     fallGravity: 2900,            // 下落加速度 px/s^2
-    hopH: 54,                     // 松开后小跳的高度
+    hopH: 14,                     // 松开后小跳的高度
+    takeoffMs: 125,               // 起跳前重心短暂下沉
     hopMs: 340,                   // 小跳时长
     sinkMs: 240,                  // 小跳落回后沉入黑洞的时长
-    perfectScale: 0.5,            // 完美判定（顶面菱形缩放）
-    edgeScale: 1.25,              // 边缘救球判定
-    playerH: 126                  // 人物显示高度
+    playerH: 1.75 * SCENE_UNITS_PER_METRE
 };
 
 /* ------------------------- 画布 ------------------------- */
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const missionPanel = document.getElementById("missionHud");
+const controls = document.getElementById("gameControls");
+const portraitLayout = window.matchMedia("(max-width: 600px) and (orientation: portrait)");
 // Keep physics in world units; scale only the display for small screens.
 let DPR = 1, VW = 0, VH = 0, viewScale = 1;
+let sceneCenterX = 0, sceneCenterY = 0, introY = 0, promptTop = 0;
 function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     const visual = window.visualViewport;
     const width = Math.max(1, visual ? visual.width : window.innerWidth);
     const height = Math.max(1, visual ? visual.height : window.innerHeight);
-    viewScale = Math.min(1, width / 560, height / 720);
+    const portrait = portraitLayout.matches;
+    const panel = missionPanel.getBoundingClientRect();
+    const stageWidth = !portrait && width >= 680 ? panel.left - 12 : width;
+    const stageTop = portrait ? panel.bottom + 10 : 0;
+    const controlsTop = portrait ? controls.getBoundingClientRect().top : height;
+    const stageBottom = Math.max(stageTop + 1, controlsTop - 56);
+    const stageScale = portrait ? (stageBottom - stageTop) / 600 : 1;
+    viewScale = Math.min(1, stageWidth / 1000, height / 720, stageScale);
     VW = width / viewScale; VH = height / viewScale;
+    sceneCenterX = stageWidth / (2 * viewScale);
+    sceneCenterY = portrait ? (stageTop + stageBottom) / (2 * viewScale) + CFG.cavityRadius * .9 : VH * .58;
+    introY = portrait ? (controlsTop - 42) / viewScale : VH * .78;
+    promptTop = width < 720 ? (panel.bottom + 20) / viewScale : 0;
     canvas.width = Math.round(width * DPR); canvas.height = Math.round(height * DPR);
     canvas.style.width = width + "px"; canvas.style.height = height + "px";
     ctx.setTransform(DPR * viewScale, 0, 0, DPR * viewScale, 0, 0);
@@ -122,23 +210,16 @@ resize();
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
-function mulberry32(seed) {
-    return function () {
-        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-}
-// 等距投影：世界坐标 -> 屏幕偏移（未含相机）
-const projX = (wx, wy) => wx - wy;
-const projY = (wx, wy) => (wx + wy) * 0.5;
+// Project the mission's length, lateral drift and depth onto the cave view.
+const projectMission = ({ x, y, z }) => ({ x: x + y * .32, y: z + y * .32 });
 
 /* ------------------------- 素材加载 ------------------------- */
 let sprite = null;          // 处理好的透明 canvas
 let spriteFrames = [];      // 每帧 {sx, sy, sw, sh}
 let spriteReady = false;
 const rabbitSprite = { image: null, frames: [], ready: false };
+const playerMotion = { image: null, frames: [], ready: false };
+const rabbitMotion = { image: null, frames: [], ready: false };
 const easterEggImage = new Image();
 let easterEggReady = false;
 easterEggImage.onload = () => { easterEggReady = true; };
@@ -162,6 +243,16 @@ const bundledSpriteFrames = {
         { sx: 959, sy: 61, sw: 234, sh: 535, anchorX: 119.5 },
         { sx: 1393, sy: 47, sw: 195, sh: 656, anchorX: 92.5 },
         { sx: 1832, sy: 176, sw: 210, sh: 528, anchorX: 115.5 }
+    ],
+    playerMotion: [
+        { sx: 254, sy: 120, sw: 262, sh: 573, anchorX: 112.5 },
+        { sx: 973, sy: 153, sw: 236, sh: 540, anchorX: 117.5 },
+        { sx: 1681, sy: 87, sw: 220, sh: 606, anchorX: 110 }
+    ],
+    rabbitMotion: [
+        { sx: 245, sy: 154, sw: 254, sh: 540, anchorX: 110.5 },
+        { sx: 977, sy: 160, sw: 243, sh: 534, anchorX: 111 },
+        { sx: 1688, sy: 86, sw: 230, sh: 608, anchorX: 123.5 }
     ]
 };
 function chromaKey(d) {
@@ -192,8 +283,9 @@ function buildSprite(img, target, bundledFrames) {
     }
     const fallbackFrames = width === bundledSpriteFrames.width && height === bundledSpriteFrames.height
         ? bundledFrames : null;
-    const fw = width / CFG.frameCount, fh = height;
-    const frames = Array.from({ length: CFG.frameCount }, (_, i) => {
+    const frameCount = bundledFrames?.length ?? CFG.frameCount;
+    const fw = width / frameCount, fh = height;
+    const frames = Array.from({ length: frameCount }, (_, i) => {
         const start = Math.round(i * fw), end = Math.round((i + 1) * fw);
         const fullFrame = { sx: start, sy: 0, sw: end - start, sh: fh };
         if (!pixels) return fallbackFrames?.[i] ?? fullFrame;
@@ -233,12 +325,14 @@ function buildSprite(img, target, bundledFrames) {
     };
     img.src = CFG.spriteSrc;
 })();
-(function loadRabbitSprite() {
+function loadExtraSprite(src, target, frames) {
     const img = new Image();
-    img.onload = () => buildSprite(img, rabbitSprite, bundledSpriteFrames.rabbit);
-    img.onerror = () => { rabbitSprite.ready = false; };
-    img.src = CFG.rabbitSpriteSrc;
-})();
+    img.onload = () => buildSprite(img, target, frames);
+    img.src = src;
+}
+loadExtraSprite(CFG.rabbitSpriteSrc, rabbitSprite, bundledSpriteFrames.rabbit);
+loadExtraSprite(CFG.playerMotionSrc, playerMotion, bundledSpriteFrames.playerMotion);
+loadExtraSprite(CFG.rabbitMotionSrc, rabbitMotion, bundledSpriteFrames.rabbitMotion);
 
 /* ------------------------- 音效（WebAudio 合成，无外部文件） ------------------------- */
 const SFX = {
@@ -279,156 +373,252 @@ const SFX = {
 };
 
 /* ------------------------- 游戏状态 ------------------------- */
-const ST = { IDLE: 0, CHARGING: 1, SINK: 2, HOLE_OPEN: 3, FALLING: 4, LAND: 5, DYING: 6, OVER: 7, HOP: 8 };
+const ST = { IDLE: 0, CHARGING: 1, SINK: 2, FALLING: 4, LAND: 5, DYING: 6, OVER: 7, HOP: 8, COMPLETE: 9, TAKEOFF: 10 };
 let state = ST.IDLE;
 let stateT = 0;                 // 当前状态已持续时间(s)
 let score = 0, combo = 0;
-let lives = 3, rescueMotion = null;
-function syncLives() {
+let landingCorrections = CFG.landingCorrectionLimit;
+function syncLandingCorrections() {
     const node = document.getElementById("lives");
-    node.textContent = "♥".repeat(lives) + "♡".repeat(3 - lives);
-    node.setAttribute("aria-label", "剩余救援 " + lives + " 次");
+    node.textContent = "♥".repeat(landingCorrections) + "♡".repeat(CFG.landingCorrectionLimit - landingCorrections);
+    node.setAttribute("aria-label", "师傅修正剩余 " + landingCorrections + " 次");
+    node.title = node.getAttribute("aria-label");
 }
 let best = +(localStorage.getItem("cavejump_best") || 0);
 document.getElementById("best").textContent = "最佳 " + best;
 
-let platforms = [];             // {wx, wy, hw, hh, depth, tint, deco}
-let curIdx = 0;
+function saveBest() {
+    if (score <= best) return;
+    best = score;
+    localStorage.setItem("cavejump_best", best);
+    document.getElementById("best").textContent = "最佳 " + best;
+}
+
+const cavities = [];
+let currentCavity, nextCavity;
 let player = { wx: 0, wy: 0, sink: 0, drop: 0, fallV: 0, squash: 0, wobble: 0, frame: 0 };
 let power = 0;                  // 0..1
 let jumpDir = { x: 1, y: 0 };   // 本次跳跃方向（世界轴）
-let landInfo = null;            // {plat, px, py, kind}
-let hole = { wx: 0, wy: 0, r: 0, active: false };      // 脚下传送洞
-let skyHole = { wx: 0, wy: 0, r: 0, active: false };   // 落点高空洞
+let landInfo = null;
+const hopStart = { wx: 0, wy: 0 };
+const hole = { wx: 0, wy: 0, r: 0, active: false };
+const skyHole = { wx: 0, wy: 0, height: 0, active: false };
 let cam = { wx: 0, wy: 0 };
 let started = false;
-let missionPlatform = null;
+let missionCavity = null;
 let rabbitForm = false, rabbitTransformPending = false, rabbitSubtitleTime = 0;
+const mission = new TunnelMission();
+let nextMove = null;
+const tunnelCamera = { along: 0, depth: 0 };
+const missionMap = document.getElementById("missionMap");
+const mapCtx = missionMap.getContext("2d");
+const missionHud = {
+    phase: document.getElementById("missionPhase"),
+    remaining: document.getElementById("missionRemaining"),
+    distance: document.getElementById("missionDistance"),
+    jump: document.getElementById("missionJump"),
+    depth: document.getElementById("missionDepth"),
+    correction: document.getElementById("missionCorrection")
+};
+
+function formatDistance(metres) {
+    return metres >= 1000 ? (metres / 1000).toFixed(2) + " km" : Number(metres.toFixed(1)) + " m";
+}
+
+function syncMissionHud() {
+    const phases = { outbound: "去程 · 任务点", return: "返程 · 出发点", complete: "往返完成" };
+    const phase = phases[mission.phase];
+    if (missionHud.phase.textContent !== phase) missionHud.phase.textContent = phase;
+    missionHud.remaining.textContent = formatDistance(mission.remaining);
+    missionHud.distance.textContent = formatDistance(mission.travelled);
+    missionHud.jump.textContent = formatDistance(mission.lastJump);
+    missionHud.depth.textContent = "相对深度 " + Math.round(CFG.startDepth - mission.position.z) + " m";
+    missionHud.correction.textContent = (mission.corrected ? "已矫正 · " : "航向矫正 ") + mission.corrections + " 次";
+    missionHud.correction.dataset.active = String(mission.corrected);
+    drawMissionMap();
+}
+
+function drawMissionMap() {
+    const width = missionMap.clientWidth, height = missionMap.clientHeight;
+    const pixelWidth = Math.round(width * DPR), pixelHeight = Math.round(height * DPR);
+    if (missionMap.width !== pixelWidth || missionMap.height !== pixelHeight) {
+        missionMap.width = pixelWidth;
+        missionMap.height = pixelHeight;
+    }
+    mapCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    mapCtx.clearRect(0, 0, width, height);
+    const along = mission.route.reduce((bounds, p) => [Math.min(bounds[0], p.x), Math.max(bounds[1], p.x)], [0, TunnelMission.legDistance]);
+    const xOf = p => 14 + (p.x - along[0]) * (width - 28) / (along[1] - along[0]);
+    const outboundColor = "#78dfc2";
+    const returnColor = "#f4bd7c";
+
+    const extent = mission.route.reduce((maximum, p) => Math.max(maximum, Math.abs(p.y)), 120);
+    const baseline = height * .69;
+    const yOf = p => baseline + p.y * height * .21 / extent;
+    mapCtx.fillStyle = "#182728";
+    mapCtx.beginPath(); mapCtx.roundRect(0, 1, width, height - 2, 7); mapCtx.fill();
+    mapCtx.fillStyle = "#b0c0bc";
+    mapCtx.font = "11px 'Microsoft YaHei', sans-serif";
+    mapCtx.fillText("俯视", 8, 14);
+    mapCtx.textAlign = "right";
+    mapCtx.fillText("● 出发点   ◆ 任务点", width - 8, 14);
+    mapCtx.textAlign = "left";
+
+    mapCtx.strokeStyle = "#657a76";
+    mapCtx.lineWidth = 1;
+    mapCtx.setLineDash([3, 4]);
+    mapCtx.beginPath(); mapCtx.moveTo(xOf(mission.origin), baseline); mapCtx.lineTo(xOf(mission.destination), baseline); mapCtx.stroke();
+    mapCtx.setLineDash([]);
+
+    const turn = mission.turnIndex ?? mission.route.length - 1;
+    for (const [first, last, color] of [[0, turn, outboundColor], [turn, mission.route.length - 1, returnColor]]) {
+        mapCtx.strokeStyle = color;
+        mapCtx.lineWidth = 1.5;
+        mapCtx.beginPath();
+        for (let i = first; i <= last; i++) {
+            const point = mission.route[i];
+            if (i === first) mapCtx.moveTo(xOf(point), yOf(point));
+            else mapCtx.lineTo(xOf(point), yOf(point));
+        }
+        mapCtx.stroke();
+    }
+
+    mapCtx.fillStyle = outboundColor;
+    mapCtx.beginPath(); mapCtx.arc(xOf(mission.origin), baseline, 3.5, 0, Math.PI * 2); mapCtx.fill();
+    mapCtx.fillStyle = returnColor;
+    mapCtx.save(); mapCtx.translate(xOf(mission.destination), baseline); mapCtx.rotate(Math.PI / 4);
+    mapCtx.fillRect(-3, -3, 6, 6); mapCtx.restore();
+
+    mapCtx.fillStyle = "#f4fffa";
+    mapCtx.save();
+    mapCtx.translate(xOf(mission.position), yOf(mission.position));
+    const heading = nextMove?.direction ?? mission.heading;
+    mapCtx.rotate(Math.atan2(heading.y, heading.x));
+    mapCtx.beginPath(); mapCtx.moveTo(6, 0); mapCtx.lineTo(-5, -4); mapCtx.lineTo(-3, 0); mapCtx.lineTo(-5, 4);
+    mapCtx.closePath(); mapCtx.fill(); mapCtx.restore();
+}
 
 const dust = [], bursts = [], popups = [];
 for (let i = 0; i < 70; i++) dust.push({ x: Math.random(), y: Math.random(), s: rand(.4, 1.6), p: Math.random() * 7, v: rand(.008, .03) });
 
-function platformDifficulty(sequence) {
+function cavityDifficulty(sequence) {
     if (sequence <= CFG.difficultyStart) return { size: 1, minGap: CFG.gapMin, maxGap: CFG.gapMax };
     const progress = clamp((sequence - CFG.difficultyStart) / 100, 0, 1);
-    return { size: .92 - .20 * progress, minGap: 280 - 10 * progress, maxGap: 315 + 3 * progress };
-}
-function newPlatform(from, dir, gap) {
-    const sequence = from.sequence + 1;
-    const hw = (CFG.tileHW + rand(-CFG.tileHWVar, CFG.tileHWVar)) * platformDifficulty(sequence).size;
     return {
-        wx: from.wx + dir.x * gap, wy: from.wy + dir.y * gap,
-        hw, hh: hw / 2, depth: 0,
-        sequence, easterEgg: sequence === CFG.easterEggPlatform,
-        tint: rand(-10, 10), deco: Math.random() < .45 ? Math.floor(rand(0, 3)) : -1
+        size: lerp(.99, .96, progress),
+        minGap: lerp(8.05, 8.25, progress) * SCENE_UNITS_PER_METRE,
+        maxGap: lerp(8.85, 8.96, progress) * SCENE_UNITS_PER_METRE
     };
 }
-const routeDirections = [{ x: 0, y: -1 }, { x: -1, y: 0 }];
-let dirHistory = [];
-let routeDirection = null, routeRemaining = 0;
-function nextDir() {
-    if (routeRemaining <= 0) {
-        // Keep 4-7-platform stretches, alternating only between the two upward diagonals.
-        const options = routeDirection === null ? routeDirections
-            : routeDirections.filter(direction => direction !== routeDirection);
-        routeDirection = options[Math.floor(Math.random() * options.length)];
-        routeRemaining = 4 + Math.floor(Math.random() * 4);
+function createCavity(wx, wy, radius, sequence, correction = null) {
+    return { wx, wy, radius, sequence, correction, open: .12, mergedWith: null, mergedInto: null };
+}
+function carveNextCavity() {
+    nextMove = mission.planMove();
+    const heading = nextMove.direction;
+    const projected = projectMission(heading);
+    const ray = Math.hypot(projected.x, projected.y) > 1e-8 ? projected : { x: heading.x, y: heading.z };
+    const length = Math.hypot(ray.x, ray.y);
+    const direction = { x: ray.x / length, y: ray.y / length };
+    const sequence = currentCavity.sequence + 1;
+    const difficulty = cavityDifficulty(sequence);
+    const radius = (CFG.cavityRadius + rand(-CFG.cavityRadiusVar, CFG.cavityRadiusVar)) * difficulty.size;
+    const minGap = difficulty.minGap, maxGap = difficulty.maxGap;
+    let freeGaps = [[minGap, maxGap]];
+    for (const cavity of cavities) {
+        const dx = cavity.wx - currentCavity.wx, dy = cavity.wy - currentCavity.wy;
+        const along = dx * direction.x + dy * direction.y;
+        const across = dx * direction.y - dy * direction.x;
+        const clearance = radius + cavity.radius + 8;
+        if (Math.abs(across) >= clearance || along + clearance <= minGap || along - clearance >= maxGap) continue;
+        const reach = Math.sqrt(clearance ** 2 - across ** 2);
+        const blockedFrom = along - reach, blockedTo = along + reach;
+        freeGaps = freeGaps.flatMap(([from, to]) => {
+            if (blockedTo <= from || blockedFrom >= to) return [[from, to]];
+            const parts = [];
+            if (from < blockedFrom) parts.push([from, blockedFrom]);
+            if (blockedTo < to) parts.push([blockedTo, to]);
+            return parts;
+        });
+        if (!freeGaps.length) break;
     }
-    routeRemaining--;
-    const d = routeDirection;
-    dirHistory.push(d); if (dirHistory.length > 4) dirHistory.shift();
-    return d;
+    // A return crossing may run through earlier excavations. Keep the route bearing.
+    const available = freeGaps[Math.floor(Math.random() * freeGaps.length)];
+    const gap = available ? rand(...available) : CFG.jumpMax;
+    const candidate = createCavity(currentCavity.wx + direction.x * gap,
+        currentCavity.wy + direction.y * gap, radius, sequence);
+    cavities.push(candidate);
+    return candidate;
 }
-function ensurePlatforms() {
-    while (platforms.length < curIdx + 5) {
-        const last = platforms[platforms.length - 1];
-        const difficulty = platformDifficulty(last.sequence + 1);
-        const direction = nextDir();
-        let candidate = null;
-        for (let attempt = 0; attempt < 30; attempt++) {
-            const p = newPlatform(last, direction, rand(difficulty.minGap, difficulty.maxGap));
-            if (platforms.every(other => platformsSeparated(p, other))) { candidate = p; break; }
-        }
-        // The upper-right escape keeps progress upward and stays within jump range.
-        if (!candidate) {
-            candidate = newPlatform(last, routeDirections[0], CFG.jumpMax - 5);
-            routeDirection = routeDirections[0]; routeRemaining = 3;
-        }
-        platforms.push(candidate);
-    }
-    if (curIdx > 2) platforms.splice(0, curIdx - 2), curIdx = 2, reindex();
-}
-function platformsSeparated(a, b) {
-    const dx = Math.abs(projX(a.wx, a.wy) - projX(b.wx, b.wy));
-    const dy = Math.abs(projY(a.wx, a.wy) - projY(b.wx, b.wy));
-    // Conservative separation for the diamond top plus the visible stone sides.
-    return dx / (a.hw + b.hw + 24) + Math.max(0, dy - CFG.tileDepth) / (a.hh + b.hh + 12) > 1;
-}
-function reindex() { platforms.forEach(p => p.depth = p.wx + p.wy); }
 
 function reset() {
-    lives = 3; rescueMotion = null; syncLives();
-    RecordedAudio.nextChatter = performance.now() + 5000;
+    landingCorrections = CFG.landingCorrectionLimit; syncLandingCorrections();
     RecordedAudio.stopVoice();
-    RecordedAudio.deferIdle();
-    platforms = [{ sequence: 0, easterEgg: false, wx: 0, wy: 0, hw: CFG.tileHW + 6, hh: (CFG.tileHW + 6) / 2, tint: 0, deco: -1 }];
-    dirHistory = []; routeDirection = null; routeRemaining = 0;
-    curIdx = 0;
-    ensurePlatforms(); reindex();
+    cavities.length = 0;
+    currentCavity = createCavity(0, 0, CFG.cavityRadius, 0);
+    currentCavity.open = 1;
+    cavities.push(currentCavity);
+    mission.reset();
+    nextCavity = carveNextCavity();
     player.wx = 0; player.wy = 0; player.sink = 0; player.drop = 0; player.fallV = 0; player.squash = 0; player.wobble = 0;
     power = 0; landInfo = null;
     hole.active = false; skyHole.active = false;
-    cam.wx = platforms[0].wx + 40; cam.wy = platforms[0].wy - 20;
+    cam.wx = lerp(currentCavity.wx, nextCavity.wx, .5);
+    cam.wy = lerp(currentCavity.wy, nextCavity.wy, .5);
     score = 0; combo = 0;
-    missionPlatform = null;
+    missionCavity = null;
+    tunnelCamera.along = 0; tunnelCamera.depth = 0;
+    syncMissionHud();
     rabbitForm = false; rabbitTransformPending = false; rabbitSubtitleTime = 0;
     document.getElementById("score").textContent = 0;
     state = ST.IDLE; stateT = 0; started = false;
     popups.length = 0; bursts.length = 0;
 }
 reset();
+window.addEventListener("resize", drawMissionMap);
+if (window.visualViewport) window.visualViewport.addEventListener("resize", drawMissionMap);
 
 /* ------------------------- 输入 ------------------------- */
 function pressStart() {
     RecordedAudio.unlock();
     RecordedAudio.stopVoice();
     SFX.ensure();
-    if (state === ST.OVER) { reset(); return; }
+    if (state === ST.OVER || state === ST.COMPLETE) { reset(); return; }
     if (!started) started = true;
     if (state !== ST.IDLE) return;
     state = ST.CHARGING; stateT = 0; power = 0;
-    hole.wx = player.wx; hole.wy = player.wy; hole.active = false; hole.r = 0;
+    jumpDir = nextDirForJump();
+    hopStart.wx = player.wx; hopStart.wy = player.wy;
     SFX.charge();
 }
 function pressEnd() {
     if (state !== ST.CHARGING) return;
     if (power < 0.06) { state = ST.IDLE; hole.active = false; player.sink = 0; return; }  // 轻点取消
-    if (!rabbitForm && platforms[curIdx].sequence >= CFG.rescueSuccessPlatform) rabbitTransformPending = true;
-    if (missionPlatform) {
-        missionPlatform.easterEgg = false;
-        missionPlatform = null;
-    }
-    state = ST.HOP; stateT = 0;                     // 先小跳一下
-    hole.wx = player.wx; hole.wy = player.wy; hole.active = true; hole.r = 0.95;
-    jumpDir = nextDirForJump();
-    SFX.hop();
+    RecordedAudio.unlock();
+    if (!rabbitForm && mission.phase === "return") rabbitTransformPending = true;
+    missionCavity = null;
+    landInfo = predictLanding();
+    const dx = jumpDir.x * CFG.entranceOffset, dy = jumpDir.y * CFG.entranceOffset;
+    // Keep the portal above the curved lower rim even on unusual route bearings.
+    hole.wx = hopStart.wx + dx;
+    hole.wy = hopStart.wy + clamp(dy, -18, -CFG.entranceMinRise);
+    hole.active = true; hole.r = .18;
+    state = ST.TAKEOFF; stateT = 0;
 }
 function nextDirForJump() {
-    // 朝下一个平台的方向跳
-    const nxt = platforms[curIdx + 1];
-    const dx = nxt.wx - platforms[curIdx].wx, dy = nxt.wy - platforms[curIdx].wy;
-    const span = Math.abs(dx) + Math.abs(dy) || 1;
+    if (!nextCavity) return jumpDir;
+    const dx = nextCavity.wx - currentCavity.wx, dy = nextCavity.wy - currentCavity.wy;
+    const span = Math.hypot(dx, dy);
     return { x: dx / span, y: dy / span };
 }
 function playerFacing() {
     const direction = state === ST.IDLE || state === ST.CHARGING ? nextDirForJump() : jumpDir;
-    return projX(direction.x, direction.y) < 0 ? -1 : 1;
+    return direction.x < 0 ? -1 : 1;
 }
 let activePointer = null, keyboardHeld = false;
 function cancelCharge() {
     if (state === ST.CHARGING) { state = ST.IDLE; stateT = 0; power = 0; hole.active = false; player.sink = 0; }
     RecordedAudio.stopVoice();
-    RecordedAudio.deferIdle();
 }
 function releasePointer() {
     const id = activePointer;
@@ -487,100 +677,115 @@ window.addEventListener("keyup", e => {
 window.addEventListener("contextmenu", e => e.preventDefault());
 
 /* ------------------------- 判定 ------------------------- */
-function screenDelta(p, wx, wy) { return { dx: projX(wx, wy) - projX(p.wx, p.wy), dy: projY(wx, wy) - projY(p.wx, p.wy) }; }
-function insideDiamond(p, wx, wy, scale) {
-    const d = screenDelta(p, wx, wy);
-    if (Math.abs(d.dx) / p.hw + Math.abs(d.dy) / p.hh <= scale) return true;
-    const e = p.extension;
-    if (!e || e.progress <= 0) return false;
-    const candidates = [0, e.progress];
-    if (e.dx) candidates.push(clamp(d.dx / e.dx, 0, e.progress));
-    if (e.dy) candidates.push(clamp(d.dy / e.dy, 0, e.progress));
-    return candidates.some(t => Math.abs(d.dx - e.dx * t) / p.hw + Math.abs(d.dy - e.dy * t) / p.hh <= scale);
-}
-function findLanding(wx, wy) {
-    let bestP = null, bestD = 1e9, kind = "miss";
-    for (const p of platforms) {
-        const d = screenDelta(p, wx, wy);
-        const dist = Math.hypot(d.dx, d.dy);
-        if (dist > bestD) continue;
-        if (insideDiamond(p, wx, wy, CFG.perfectScale)) { bestP = p; bestD = dist; kind = "perfect"; }
-        else if (insideDiamond(p, wx, wy, 1)) { if (!bestP || kind === "miss") { bestP = p; bestD = dist; kind = "good"; } }
-        else if (insideDiamond(p, wx, wy, CFG.edgeScale)) { if (!bestP) { bestP = p; bestD = dist; kind = "edge"; } }
-    }
-    return { plat: bestP, kind };
-}
 const jumpDist = () => CFG.jumpMin + power * (CFG.jumpMax - CFG.jumpMin);
+const cavityCeiling = p => p.radius * (CFG.cavityCenterHeight + CFG.cavityVerticalRadius);
+
+function sphereOverlap(distance, radius) {
+    // Intersection volume divided by one sphere's volume, for two equal spheres.
+    const separation = Math.min(distance / radius, 2);
+    return (4 + separation) * (2 - separation) ** 2 / 16;
+}
+
+function predictLanding() {
+    const distance = jumpDist();
+    const wx = hopStart.wx + jumpDir.x * distance, wy = hopStart.wy + jumpDir.y * distance;
+    const target = nextCavity;
+    const offset = Math.hypot(wx - target.wx, wy - target.wy);
+    const overlap = sphereOverlap(offset, target.radius);
+    if (offset <= CFG.plannedLandingTolerance) return { wx: target.wx, wy: target.wy, target, overlap, kind: "perfect", cavity: target };
+    const kind = overlap + Number.EPSILON >= CFG.freeOverlap ? "overlap" : landingCorrections > 0 ? "correction" : "miss";
+    return { wx, wy, target, overlap, kind, cavity: null };
+}
+
+function openLandingExit() {
+    const { wx, wy, target, kind } = landInfo;
+    if (kind === "correction") {
+        landingCorrections--;
+        syncLandingCorrections();
+    }
+    if (kind === "overlap" || kind === "correction") {
+        landInfo.cavity = createCavity(wx, wy, target.radius, target.sequence, kind);
+        landInfo.cavity.open = 1;
+        if (kind === "overlap") {
+            landInfo.cavity.mergedWith = target;
+            target.mergedInto = landInfo.cavity;
+        }
+        cavities.push(landInfo.cavity);
+        dustBurst(projOf(wx, wy), 14);
+    }
+    skyHole.wx = wx; skyHole.wy = wy;
+    skyHole.height = cavityCeiling(landInfo.cavity || target);
+    skyHole.active = true;
+    player.sink = 0;
+    state = ST.SINK; stateT = 0;
+    SFX.portal();
+}
 
 /* ------------------------- 更新 ------------------------- */
 function update(dt) {
     rabbitSubtitleTime = Math.max(0, rabbitSubtitleTime - dt);
-    RecordedAudio.tick(state === ST.IDLE && started);
     stateT += dt;
-    if (rescueMotion) {
-        rescueMotion.t = Math.min(1, rescueMotion.t + dt / .48);
-        const a = rescueMotion.t * rescueMotion.t * (3 - 2 * rescueMotion.t);
-        if (rescueMotion.type === "extend") {
-            rescueMotion.plat.extension.progress = a;
-        } else {
-            for (const item of rescueMotion.items) {
-                item.plat.wx = item.wx + rescueMotion.dx * a;
-                item.plat.wy = item.wy + rescueMotion.dy * a;
-            }
-            reindex();
-        }
-        if (rescueMotion.t >= 1) rescueMotion = null;
-    }
+    if (nextCavity && nextCavity.open < 1) nextCavity.open = Math.min(1, nextCavity.open + dt * 5);
     // 相机目标
     let tx, ty;
-    if (state === ST.HOLE_OPEN || state === ST.FALLING || state === ST.DYING) {
-        tx = landInfo ? landInfo.px : player.wx; ty = landInfo ? landInfo.py : player.wy;
+    if (state === ST.SINK) {
+        tx = lerp(currentCavity.wx, skyHole.wx, .5);
+        ty = lerp(currentCavity.wy, skyHole.wy, .5);
+    } else if (state === ST.FALLING || state === ST.DYING) {
+        tx = player.wx; ty = player.wy;
     } else {
-        const cur = platforms[curIdx], nxt = platforms[curIdx + 1];
-        tx = cur.wx + (nxt.wx - cur.wx) * 0.32; ty = cur.wy + (nxt.wy - cur.wy) * 0.32;
+        const ahead = nextCavity || currentCavity;
+        tx = lerp(currentCavity.wx, ahead.wx, .5);
+        ty = lerp(currentCavity.wy, ahead.wy, .5);
+        if (portraitLayout.matches && currentCavity.mergedWith) {
+            let left = Infinity, right = -Infinity;
+            for (const cavity of [currentCavity, currentCavity.mergedWith, ahead]) {
+                const x = cavity.wx, width = cavity.radius * CFG.cavityHorizontalRadius;
+                left = Math.min(left, x - width);
+                right = Math.max(right, x + width);
+            }
+            tx = (left + right) / 2;
+        }
     }
     const k = 1 - Math.pow(0.0016, dt);
     cam.wx = lerp(cam.wx, tx, k); cam.wy = lerp(cam.wy, ty, k);
+    const tunnelPosition = projectMission(mission.position);
+    tunnelCamera.along = lerp(tunnelCamera.along, tunnelPosition.x, k);
+    tunnelCamera.depth = lerp(tunnelCamera.depth, tunnelPosition.y, k);
 
     switch (state) {
         case ST.CHARGING: {
             power = clamp(stateT * 1000 / CFG.chargeMs, 0, 1);
-            hole.active = false; hole.r = 0;
+            break;
+        }
+        case ST.TAKEOFF: {
+            const crouch = clamp(stateT * 1000 / CFG.takeoffMs, 0, 1);
+            hole.r = lerp(.18, .58, crouch);
+            if (crouch >= 1) { state = ST.HOP; stateT = 0; SFX.hop(); }
             break;
         }
         case ST.HOP: {
-            hole.r = 0.95;
-            if (stateT * 1000 >= CFG.hopMs) { state = ST.SINK; stateT = 0; SFX.portal(); }
+            const hop = clamp(stateT * 1000 / CFG.hopMs, 0, 1);
+            hole.r = lerp(.58, .95, clamp(hop * 2, 0, 1));
+            player.wx = lerp(hopStart.wx, hole.wx, hop);
+            player.wy = lerp(hopStart.wy, hole.wy, hop);
+            if (hop >= 1) openLandingExit();
             break;
         }
         case ST.SINK: {
-            // Finish the entire body crossing the portal before teleporting.
             const progress = clamp(stateT * 1000 / CFG.sinkMs, 0, 1);
-            player.sink = (CFG.playerH + 32) * progress * progress;
-            hole.r = 0.95;
-            if (stateT * 1000 > CFG.sinkMs) {
-                // 计算落点
-                const d = jumpDist();
-                const lwx = player.wx + jumpDir.x * d, lwy = player.wy + jumpDir.y * d;
-                const res = findLanding(lwx, lwy);
-                landInfo = { plat: res.plat, px: lwx, py: lwy, kind: res.kind };
-                prepareRescue(landInfo);
-                player.wx = lwx; player.wy = lwy;      // 水平位置同步到落点，垂直由 drop 控制
-                skyHole.wx = lwx; skyHole.wy = lwy; skyHole.active = true; skyHole.r = 1;
-                state = ST.HOLE_OPEN; stateT = 0;
-                SFX.drop();
-            }
-            break;
-        }
-        case ST.HOLE_OPEN: {
-            skyHole.r = 1;
-            hole.active = false;      // 脚下旧洞收拢
-            if (stateT > 0.3) {
-                // Switch only after the original body is hidden in the entrance.
+            player.sink = progress * progress;
+            if (progress >= 1) {
                 if (rabbitTransformPending) {
                     rabbitForm = true; rabbitTransformPending = false; rabbitSubtitleTime = 4.5;
                 }
-                state = ST.FALLING; stateT = 0; player.drop = -CFG.skyHoleDrop; player.fallV = 0; hole.active = false;
+                const frames = rabbitForm && rabbitSprite.ready ? rabbitSprite.frames : spriteFrames;
+                player.wx = skyHole.wx; player.wy = skyHole.wy;
+                player.drop = frameHeight(frames[1]) - skyHole.height;
+                player.fallV = 0;
+                hole.active = false;
+                state = ST.FALLING; stateT = 0;
+                SFX.drop();
             }
             break;
         }
@@ -596,18 +801,11 @@ function update(dt) {
         case ST.LAND: {
             player.squash = Math.max(0, player.squash - dt * 4.2);
             player.wobble *= Math.pow(0.02, dt);
-            if (landInfo && landInfo.extended) {
-                // Cross the rescued ledge before the next jump so its original distance stays reachable.
-                const t = clamp(stateT / .34, 0, 1), a = t * t * (3 - 2 * t);
-                player.wx = lerp(landInfo.px, landInfo.plat.wx, a);
-                player.wy = lerp(landInfo.py, landInfo.plat.wy, a);
+            if (stateT > 0.34) {
+                state = mission.phase === "complete" ? ST.COMPLETE : nextCavity ? ST.IDLE : ST.OVER;
+                stateT = 0; player.squash = 0;
+                if (state !== ST.IDLE) saveBest();
             }
-            if (landInfo && landInfo.kind === "edge") {
-                const p = landInfo.plat;
-                player.wx = lerp(player.wx, p.wx, 1 - Math.pow(0.05, dt));
-                player.wy = lerp(player.wy, p.wy, 1 - Math.pow(0.05, dt));
-            }
-            if (stateT > 0.34) { state = ST.IDLE; stateT = 0; player.squash = 0; }
             break;
         }
         case ST.DYING: {
@@ -615,7 +813,7 @@ function update(dt) {
             player.drop += player.fallV * dt;
             if (stateT > 1.15) {
                 state = ST.OVER; stateT = 0;
-                if (score > best) { best = score; localStorage.setItem("cavejump_best", best); document.getElementById("best").textContent = "最佳 " + best; }
+                saveBest();
             }
             break;
         }
@@ -634,87 +832,43 @@ function update(dt) {
     for (const m of dust) { m.y -= m.v * dt * 8; m.p += dt; if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); } }
 }
 
-function prepareRescue(info) {
-    if (info.plat || info.rescued || lives <= 0) return false;
-    const target = platforms[curIdx + 1];
-    if (!target) return false;
-    lives--; syncLives();
-    const origin = platforms[curIdx];
-    const routeX = target.wx - origin.wx, routeY = target.wy - origin.wy;
-    const shortfall = (info.px - target.wx) * routeX + (info.py - target.wy) * routeY < 0;
-    if (shortfall) {
-        // Sweep the target's surface toward the feet, anchored at its original center.
-        const d = screenDelta(target, info.px, info.py);
-        const distance = Math.abs(d.dx) / target.hw + Math.abs(d.dy) / target.hh;
-        const length = Math.max(0, 1 - .65 / Math.max(distance, .001));
-        target.extension = { dx: d.dx * length, dy: d.dy * length, progress: 0 };
-        rescueMotion = { type: "extend", t: 0, plat: target };
-        info.extended = true;
-    } else {
-        rescueMotion = {
-            type: "move", t: 0, dx: info.px - target.wx, dy: info.py - target.wy,
-            items: platforms.slice(curIdx + 1).map(p => ({ plat: p, wx: p.wx, wy: p.wy }))
-        };
-    }
-    info.plat = target; info.kind = "rescue"; info.rescued = true;
-    return true;
-}
 function resolveLanding() {
     skyHole.active = false;
-    const info = landInfo;
-    // Recheck at the actual contact frame, including late or resumed landings.
-    if (!info.plat) prepareRescue(info);
-    if (info.rescued && rescueMotion) {
-        if (rescueMotion.type === "extend") {
-            rescueMotion.plat.extension.progress = 1;
-        } else {
-            for (const item of rescueMotion.items) {
-                item.plat.wx = item.wx + rescueMotion.dx;
-                item.plat.wy = item.wy + rescueMotion.dy;
-            }
-            reindex();
-        }
-        rescueMotion = null;
+    const { cavity, kind, wx, wy } = landInfo;
+    if (!cavity) {
+        state = ST.DYING; stateT = 0; player.fallV = 300;
+        SFX.fail();
+        return;
     }
-    if (!info.plat) { state = ST.DYING; stateT = 0; player.fallV = 300; SFX.fail(); return; }
-    const p = info.plat;
-    if (p.easterEgg || p.sequence === CFG.rescueSuccessPlatform) missionPlatform = p;
-    // 落点收拢：向平台中心迈半步，消解上一跳遗留的横向偏移（容错手感）
-    const pull = info.kind === "perfect" ? 0.9 : info.kind === "good" ? 0.5 : 0;
-    player.wx = lerp(info.px, p.wx, pull);
-    player.wy = lerp(info.py, p.wy, pull);
+    currentCavity = cavity;
+    player.wx = wx; player.wy = wy;
     player.squash = 1;
     state = ST.LAND; stateT = 0;
     SFX.land();
-    if (info.kind === "edge" || info.kind === "rescue") RecordedAudio.afterLandingCaution();
-    dustBurst(projOf(info.px, info.py), info.kind === "perfect" ? 26 : 14);
-    const idx = platforms.indexOf(p);
-    if (idx > curIdx) {
-        if (info.kind !== "edge" && info.kind !== "rescue") RecordedAudio.afterLandingChatter();
-        const gained = idx - curIdx;
-        curIdx = idx;
-        ensurePlatforms();
-        if (info.kind === "perfect") {
-            combo++;
-            const add = 2 + Math.min(combo - 1, 3);
-            score += add;
-            popup("PERFECT +" + add + (combo > 1 ? "  x" + combo : ""), "#7ef0c8");
-            SFX.perfect();
-        } else if (info.kind === "edge") {
-            combo = 0; score += gained;
-            popup("好险 +" + gained, "#ffd479");
-        } else if (info.kind === "rescue") {
-            combo = 0; score += gained;
-        } else {
-            combo = 0; score += gained;
-            popup("+" + gained, "#e8eef5");
-        }
-        document.getElementById("score").textContent = score;
+    dustBurst(projOf(wx, wy), kind === "perfect" ? 26 : 14);
+    const phase = mission.phase;
+    mission.advance(power, nextMove);
+    if (phase === "outbound" && mission.phase === "return") missionCavity = cavity;
+    if (mission.phase === "complete") {
+        nextCavity = null;
+        nextMove = null;
     } else {
-        popup("原地踏步", "#9aa6b4");
+        nextCavity = carveNextCavity();
     }
+    syncMissionHud();
+    if (kind === "perfect") {
+        combo++;
+        const add = 2 + Math.min(combo - 1, 3);
+        score += add;
+        popup("PERFECT +" + add + (combo > 1 ? "  x" + combo : ""), "#7ef0c8");
+        SFX.perfect();
+    } else {
+        combo = 0;
+        score++;
+    }
+    document.getElementById("score").textContent = score;
 }
-function popup(text, color) { popups.push({ text, color, x: VW / 2, y: VH * 0.34, t: 0, life: 1.1 }); }
+function popup(text, color) { popups.push({ text, color, x: VW / 2, y: Math.max(VH * .34, promptTop), t: 0, life: 1.1 }); }
 function dustBurst(sp, n) {
     for (let i = 0; i < n; i++) {
         const a = rand(-Math.PI, 0), s = rand(40, 190);
@@ -723,41 +877,36 @@ function dustBurst(sp, n) {
 }
 function projOf(wx, wy) {
     return {
-        x: projX(wx, wy) - projX(cam.wx, cam.wy) + VW * 0.44,
-        y: projY(wx, wy) - projY(cam.wx, cam.wy) + VH * 0.58
+        x: wx - cam.wx + sceneCenterX,
+        y: wy - cam.wy + sceneCenterY
     };
 }
 
 /* ------------------------- 绘制：洞穴背景 ------------------------- */
-const rockRnd = mulberry32(20261113);
-const rockLayers = [0, 1].map(li => {
-    const pts = [];
-    for (let i = 0; i <= 26; i++) pts.push({ x: i / 26, y: 0.12 + rockRnd() * (li ? 0.16 : 0.1) + (li ? 0.3 : 0) });
-    return pts;
-});
-function drawBackground(t) {
-    const g = ctx.createLinearGradient(0, 0, 0, VH);
-    g.addColorStop(0, "#3b4149"); g.addColorStop(.55, "#23272d"); g.addColorStop(1, "#101215");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+const strataSize = 544;
+let strataPattern = null;
+const strataImage = new Image();
+strataImage.onload = () => {
+    // Mirror alternate tiles so opposite edges and all tile joins share the same pixels.
+    const tile = document.createElement("canvas");
+    tile.width = tile.height = strataSize * 2;
+    const patternCtx = tile.getContext("2d");
+    for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        patternCtx.setTransform(x ? -1 : 1, 0, 0, y ? -1 : 1, x * tile.width, y * tile.height);
+        patternCtx.drawImage(strataImage, 0, 0, strataSize, strataSize);
+    }
+    strataPattern = ctx.createPattern(tile, "repeat");
+};
+strataImage.src = CFG.undergroundSrc;
 
-    // 顶部光锥
-    const lg = ctx.createRadialGradient(VW * .5, -VH * .2, 40, VW * .5, -VH * .2, VH * 1.1);
-    lg.addColorStop(0, "rgba(190,215,235,.16)"); lg.addColorStop(1, "rgba(190,215,235,0)");
-    ctx.fillStyle = lg; ctx.fillRect(0, 0, VW, VH);
-
-    // 视差岩壁剪影
-    rockLayers.forEach((pts, li) => {
-        const par = li ? 0.16 : 0.07;
-        const ox = -projX(cam.wx, cam.wy) * par, oy = -projY(cam.wx, cam.wy) * par * .6;
-        ctx.fillStyle = li ? "rgba(16,19,23,.85)" : "rgba(28,32,38,.8)";
-        ctx.beginPath(); ctx.moveTo(-50, -50);
-        pts.forEach(p => ctx.lineTo(p.x * (VW + 200) - 100 + ox, p.y * VH + oy));
-        ctx.lineTo(VW + 50, -50); ctx.closePath(); ctx.fill();
-        // 底部钟乳石
-        ctx.beginPath(); ctx.moveTo(-50, VH + 50);
-        pts.forEach(p => ctx.lineTo(p.x * (VW + 200) - 100 - ox, VH - p.y * VH * .8 + oy * .5));
-        ctx.lineTo(VW + 50, VH + 50); ctx.closePath(); ctx.fill();
-    });
+function drawBackground() {
+    const offsetX = -(tunnelCamera.along * 1.2) % (strataSize * 2);
+    const offsetY = -(tunnelCamera.depth * 2.2) % (strataSize * 2);
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.fillStyle = strataPattern || "#263235";
+    ctx.fillRect(-offsetX, -offsetY, VW, VH);
+    ctx.restore();
 
     // 漂浮尘埃
     for (const m of dust) {
@@ -772,108 +921,121 @@ function drawVignette() {
     ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
 }
 
-/* ------------------------- 绘制：平台 ------------------------- */
-function platformOutline(p) {
-    const base = [{x:0,y:-p.hh},{x:p.hw,y:0},{x:0,y:p.hh},{x:-p.hw,y:0}];
-    if (!p.extension || p.extension.progress <= 0) return base;
-    const dx = p.extension.dx * p.extension.progress, dy = p.extension.dy * p.extension.progress;
-    const points = base.concat(base.map(q => ({x:q.x+dx,y:q.y+dy}))).sort((a,b)=>a.x-b.x || a.y-b.y);
-    const cross = (a,b,c)=>(b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
-    const lower=[], upper=[];
-    for (const q of points) {
-        while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], q) <= 0) lower.pop();
-        lower.push(q);
-    }
-    for (let i=points.length-1;i>=0;i--) {
-        const q=points[i];
-        while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], q) <= 0) upper.pop();
-        upper.push(q);
-    }
-    lower.pop(); upper.pop();
-    return lower.concat(upper);
+/* ------------------------- 绘制：吞噬形成的球形空洞 ------------------------- */
+function projectCavity(cavity) {
+    const s = projOf(cavity.wx, cavity.wy);
+    const radius = cavity.radius * (1 - (1 - cavity.open) ** 2);
+    return {
+        x: s.x, y: s.y - radius * CFG.cavityCenterHeight, floorY: s.y, radius,
+        rx: radius * CFG.cavityHorizontalRadius, ry: radius * CFG.cavityVerticalRadius
+    };
 }
-function drawPlatform(p, t) {
-    const s = projOf(p.wx, p.wy);
-    const hw = p.hw, hh = p.hh, D = CFG.tileDepth;
-    const base = 168 + p.tint;
-    const outline = platformOutline(p);
-    // Front-facing side walls follow the same extended outline as the top.
-    for (let i=0;i<outline.length;i++) {
-        const a=outline[i], b=outline[(i+1)%outline.length];
-        if (b.x >= a.x) continue;
-        const shade = b.y > a.y ? [.24,.26,.31] : [.34,.37,.42];
-        ctx.fillStyle = "rgb(" + shade.map(v=>base*v|0).join(",") + ")";
-        ctx.beginPath();ctx.moveTo(s.x+a.x,s.y+a.y);ctx.lineTo(s.x+b.x,s.y+b.y);
-        ctx.lineTo(s.x+b.x,s.y+b.y+D);ctx.lineTo(s.x+a.x,s.y+a.y+D);ctx.closePath();ctx.fill();
+
+function cavityOutline(first, second) {
+    const path = new Path2D();
+    const fullEllipse = p => {
+        path.moveTo(p.x + p.rx, p.y);
+        path.ellipse(p.x, p.y, p.rx, p.ry, 0, 0, Math.PI * 2);
+        path.closePath();
+    };
+    if (!second) { fullEllipse(first); return path; }
+
+    // Divide out the shared ellipse stretch to find the intersections as circles.
+    const dx = (second.x - first.x) / CFG.cavityHorizontalRadius;
+    const dy = (second.y - first.y) / CFG.cavityVerticalRadius;
+    const distance = Math.hypot(dx, dy);
+    const r1 = first.radius, r2 = second.radius;
+    if (distance >= r1 + r2) {
+        fullEllipse(first);
+        fullEllipse(second);
+        return path;
     }
-    const tg = ctx.createLinearGradient(s.x - hw, s.y - hh, s.x + hw, s.y + hh);
-    tg.addColorStop(0, "rgb(" + (base + 26 | 0) + "," + (base + 30 | 0) + "," + (base + 36 | 0) + ")");
-    tg.addColorStop(1, "rgb(" + (base - 14 | 0) + "," + (base - 12 | 0) + "," + (base - 8 | 0) + ")");
-    ctx.fillStyle=tg;ctx.beginPath();
-    outline.forEach((q,i)=>{if(i===0)ctx.moveTo(s.x+q.x,s.y+q.y);else ctx.lineTo(s.x+q.x,s.y+q.y);});
-    ctx.closePath();ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y - hh * .72); ctx.lineTo(s.x + hw * .72, s.y); ctx.lineTo(s.x, s.y + hh * .72); ctx.lineTo(s.x - hw * .72, s.y);
-    ctx.closePath(); ctx.stroke();
-    ctx.strokeStyle = "rgba(20,24,28,.35)"; ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(s.x - hw * .5, s.y - hh * .1); ctx.lineTo(s.x - hw * .18, s.y + hh * .18); ctx.lineTo(s.x + hw * .1, s.y - hh * .05);
-    ctx.stroke();
-    // 装饰：发光水晶 / 碎石
-    if (p.deco === 0) {
-        const cx = s.x + hw * .45, cy = s.y - hh * .3;
-        const pulse = .55 + .35 * Math.sin(t * 2.4 + p.wx);
-        ctx.fillStyle = "rgba(110,225,205," + (pulse * .85).toFixed(2) + ")";
-        ctx.beginPath(); ctx.moveTo(cx, cy - 14); ctx.lineTo(cx + 6, cy - 4); ctx.lineTo(cx, cy + 2); ctx.lineTo(cx - 6, cy - 4); ctx.closePath(); ctx.fill();
-        const gg = ctx.createRadialGradient(cx, cy - 6, 1, cx, cy - 6, 22);
-        gg.addColorStop(0, "rgba(110,225,205," + (pulse * .3).toFixed(2) + ")"); gg.addColorStop(1, "rgba(110,225,205,0)");
-        ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(cx, cy - 6, 22, 0, 7); ctx.fill();
-    } else if (p.deco === 1) {
-        ctx.fillStyle = "rgba(90,98,110,.9)";
-        ctx.beginPath(); ctx.ellipse(s.x - hw * .4, s.y + hh * .2, 7, 4, 0, 0, 7); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(s.x - hw * .28, s.y + hh * .38, 4.5, 2.6, 0, 0, 7); ctx.fill();
+    if (distance <= Math.abs(r1 - r2)) {
+        fullEllipse(r1 >= r2 ? first : second);
+        return path;
+    }
+
+    // Connect only the two arcs outside the overlap, so no rim crosses the opening.
+    const bearing = Math.atan2(dy, dx);
+    const firstCut = Math.acos(clamp((distance ** 2 + r1 ** 2 - r2 ** 2) / (2 * distance * r1), -1, 1));
+    const secondCut = Math.acos(clamp((distance ** 2 + r2 ** 2 - r1 ** 2) / (2 * distance * r2), -1, 1));
+    path.ellipse(first.x, first.y, first.rx, first.ry, 0, bearing + firstCut, bearing + Math.PI * 2 - firstCut);
+    path.ellipse(second.x, second.y, second.rx, second.ry, 0, bearing + Math.PI + secondCut, bearing + Math.PI * 3 - secondCut);
+    path.closePath();
+    return path;
+}
+
+function drawCavity(cavity, t) {
+    const shape = projectCavity(cavity);
+    const other = cavity.mergedWith ? projectCavity(cavity.mergedWith) : null;
+    const visible = p => p.x + p.rx + 8 >= 0 && p.x - p.rx - 8 <= VW && p.y + p.ry + 8 >= 0 && p.y - p.ry - 8 <= VH;
+    if (!visible(shape) && !(other && visible(other))) return;
+    const outline = cavityOutline(shape, other);
+    const cx = other ? (shape.x + other.x) / 2 : shape.x;
+    const cy = other ? (shape.y + other.y) / 2 : shape.y;
+    const extent = other ? Math.max(shape.rx, other.rx) + Math.hypot(shape.x - other.x, shape.y - other.y) / 2 : shape.rx;
+    const g = ctx.createRadialGradient(cx - extent * .16, cy - extent * .17, extent * .12, cx, cy, extent * 1.04);
+    g.addColorStop(0, "#080f13");
+    g.addColorStop(.68, "#131d22");
+    g.addColorStop(.88, "#263234");
+    g.addColorStop(1, "#46514a");
+    ctx.fillStyle = g;
+    ctx.fill(outline);
+
+    ctx.strokeStyle = "#101619";
+    ctx.lineWidth = 8;
+    ctx.stroke(outline);
+    ctx.strokeStyle = "#7f89745e";
+    ctx.lineWidth = 2;
+    ctx.stroke(outline);
+    if (!other) {
+        ctx.strokeStyle = "#677b7166";
+        ctx.beginPath(); ctx.ellipse(shape.x, shape.y, shape.rx * .91, shape.ry * .93, 0, Math.PI * .93, Math.PI * 1.79); ctx.stroke();
+    }
+
+    // A thin bedrock ledge at the base gives the character a visible footing.
+    if (cavity.open > .7) {
+        const { x, floorY, radius } = shape;
+        const floor = ctx.createLinearGradient(0, floorY - radius * .09, 0, floorY + radius * .09);
+        floor.addColorStop(0, "#64736b");
+        floor.addColorStop(1, "#2d3a37");
+        ctx.fillStyle = floor;
+        ctx.beginPath(); ctx.ellipse(x, floorY, radius * .43, radius * .09, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const activeCorrection = cavity.correction && (cavity === currentCavity || cavity === landInfo?.cavity);
+    if (cavity === nextCavity || activeCorrection) {
+        ctx.save();
+        ctx.strokeStyle = "#8fe4cf";
+        ctx.globalAlpha = .32 + .18 * Math.sin(t * 3);
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 20;
+        ctx.stroke(outline);
+        ctx.restore();
     }
 }
-function drawEasterEgg(p) {
-    if (!p.easterEgg || !easterEggReady) return;
-    const s = projOf(p.wx, p.wy);
-    const width = Math.min(136, p.hw * 1.3);
+
+function drawEasterEgg(cavity) {
+    if (!easterEggReady) return;
+    const s = projOf(cavity.wx, cavity.wy);
+    const width = Math.min(126, cavity.radius * 1.15);
     const height = width * easterEggImage.naturalHeight / easterEggImage.naturalWidth;
-    // Rest on the back of the platform; keep its landing area and physics unchanged.
-    ctx.drawImage(easterEggImage, s.x - width / 2 + p.hw * .12,
-        s.y - p.hh * .18 - height, width, height);
-}
-function drawNextHint(t) {
-    const nxt = platforms[curIdx + 1];
-    if (!nxt || state === ST.OVER) return;
-    const s = projOf(nxt.wx, nxt.wy);
-    const a = .22 + .14 * Math.sin(t * 3);
-    ctx.strokeStyle = "rgba(140,230,210," + a.toFixed(3) + ")";
-    ctx.lineWidth = 2; ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 26;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y - nxt.hh * .9); ctx.lineTo(s.x + nxt.hw * .9, s.y); ctx.lineTo(s.x, s.y + nxt.hh * .9); ctx.lineTo(s.x - nxt.hw * .9, s.y);
-    ctx.closePath(); ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.drawImage(easterEggImage, s.x + cavity.radius * .28 - width / 2, s.y - height, width, height);
 }
 
 /* ------------------------- 绘制：传送洞 ------------------------- */
-function drawHole(wx, wy, r, t, frontOnly, yOff) {
+function drawHole(wx, wy, r, height = 0) {
     if (r <= 0.01) return;
     const s = projOf(wx, wy);
-    s.y += yOff || 0;
-    const rx = 62 * r, ry = 31 * r;
-    ctx.save();
-    if (frontOnly) {
-        ctx.beginPath();
-        ctx.rect(s.x - rx - 8, s.y, rx * 2 + 16, ry + 40);
-        ctx.clip();
-    }
+    s.y -= height;
+    const rx = 48 * r, ry = 23 * r;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
+    ctx.strokeStyle = "#597065";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
 }
 
 /* ------------------------- 绘制：人物 ------------------------- */
@@ -881,67 +1043,103 @@ function hopOffset() {
     const ht = clamp(stateT * 1000 / CFG.hopMs, 0, 1);
     return -4 * CFG.hopH * ht * (1 - ht);          // 小跳抛物线偏移
 }
-function drawPlayer(t) {
-    if (state === ST.HOLE_OPEN || state === ST.OVER) return;   // 已沉入洞中 / 局终隐藏
-    const s = projOf(player.wx, player.wy);
-    let fy = s.y;                                   // 脚底屏幕 y
-    if (state === ST.HOP) fy += hopOffset();        // 小跳抛物线
-    if (state === ST.SINK) fy += player.sink;       // 沉入黑洞
-    if (state === ST.FALLING || state === ST.DYING || state === ST.HOLE_OPEN) fy += player.drop;
+function groundedMotionFrame() {
+    // The three authored poses are anticipation, landing compression, and recovery.
+    if (state === ST.TAKEOFF) return stateT < .042 ? 2 : 0;
+    if (state === ST.LAND && stateT < .24) return stateT < .10 ? 1 : 2;
+    return null;
+}
+function frameHeight(frame) {
+    return frame ? CFG.playerH * frame.sh / frame.referenceHeight : CFG.playerH;
+}
 
-    // 影子
-    if (state !== ST.DYING && state !== ST.OVER && state !== ST.SINK) {
-        const hAbove = clamp(-(fy - s.y), -200, 400);
-        const sh = clamp(1 - hAbove / 420, .18, 1);
-        ctx.fillStyle = "rgba(0,0,0," + (.34 * sh).toFixed(2) + ")";
-        ctx.beginPath(); ctx.ellipse(s.x, s.y + 3, 26 * sh + 8, 10 * sh + 3, 0, 0, 7); ctx.fill();
+function drawPlayer() {
+    if (state === ST.OVER) return;
+    if (state === ST.SINK) {
+        drawPlayerAt(player.wx, player.wy, currentCavity, rabbitForm, "entry");
+        if (player.sink > 0) {
+            drawPlayerAt(skyHole.wx, skyHole.wy, landInfo.cavity, rabbitForm || rabbitTransformPending, "exit");
+        }
+        return;
     }
-    if (state === ST.SINK && player.sink >= CFG.playerH + 32) return;  // 已完全没入洞中
+    const cavity = state === ST.FALLING ? landInfo.cavity : currentCavity;
+    drawPlayerAt(player.wx, player.wy, cavity, rabbitForm);
+}
 
-    // 帧选择
+function drawPlayerAt(wx, wy, cavity, asRabbit, transferSide) {
+    const s = projOf(wx, wy);
+    const useRabbit = asRabbit && rabbitSprite.ready;
+    const baseFrames = useRabbit ? rabbitSprite.frames : spriteFrames;
+    const motion = useRabbit ? rabbitMotion : playerMotion;
+    const motionFrame = motion.ready && baseFrames.length ? groundedMotionFrame() : null;
     let fi = 0;
     if (state === ST.SINK) fi = 1;
-    else if (state === ST.HOP) fi = stateT * 1000 < CFG.hopMs * 0.5 ? 2 : 1;
-    else if (state === ST.FALLING || state === ST.DYING) fi = player.drop < -CFG.skyHoleDrop * 0.45 ? 2 : 3;
-    else if (state === ST.LAND) fi = 4;
+    else if (state === ST.HOP) {
+        const hop = stateT * 1000 / CFG.hopMs;
+        fi = hop >= .24 && hop < .65 ? 2 : 1;
+    } else if (state === ST.FALLING) {
+        fi = player.drop + skyHole.height < frameHeight(baseFrames[3]) ? 1 : 3;
+    } else if (state === ST.DYING) fi = 3;
+    else if (state === ST.LAND && stateT < .24) fi = 4;
     player.frame = fi;
 
-    const H = CFG.playerH;
+    const useMotion = motionFrame !== null;
+    const image = useMotion ? motion.image : useRabbit ? rabbitSprite.image : sprite;
+    const frame = useMotion ? motion.frames[motionFrame] : baseFrames[fi];
+    // Match the new poses to the existing standing frame and keep the same foot anchor.
+    const height = useMotion ? frameHeight(baseFrames[0]) * .97 * frame.sh / frame.referenceHeight : frameHeight(frame);
     let sq = 1, st = 1;
-    if (state === ST.CHARGING) { sq = 1; st = 1; }   // 只蹲不坠
-    if (state === ST.HOP) { sq = 1.05; st = .96; }
-    if (state === ST.LAND) { sq = 1 - player.squash * .22; st = 1 + player.squash * .16; }
-    if (state === ST.FALLING) { sq = 1.06; st = .95; }
+    if (state === ST.TAKEOFF && !useMotion) {
+        const crouch = clamp(stateT * 1000 / CFG.takeoffMs, 0, 1);
+        sq = 1 - crouch * .10;
+        st = 1 + crouch * .06;
+    }
+    if (state === ST.HOP) st = .96;
+    if (state === ST.LAND && !useMotion) {
+        sq = 1 - player.squash * .22;
+        st = 1 + player.squash * .16;
+    }
+
+    const exitPlane = s.y - skyHole.height;
+    let fy = s.y;
+    if (transferSide) fy = (transferSide === "entry" ? s.y : exitPlane) + height * player.sink;
+    else if (state === ST.HOP) fy += hopOffset();
+    else if (state === ST.FALLING || state === ST.DYING) fy += player.drop;
 
     ctx.save();
-    if (state === ST.SINK) {
-        // 沉入黑洞：只画洞口中心线以上的部分，下半身直接没入洞中，避免穿出洞外
+    if (cavity && state !== ST.DYING) {
+        const merged = cavity.mergedWith ? projectCavity(cavity.mergedWith) : null;
+        ctx.clip(cavityOutline(projectCavity(cavity), merged));
+    }
+
+    // Both sides reveal different portions of the pose at the same crossing progress.
+    if (transferSide === "entry") {
         ctx.beginPath();
         ctx.rect(0, 0, VW, Math.max(0, s.y));
         ctx.clip();
     }
-    if (state === ST.FALLING && skyHole.active) {
-        // Only the part below the exit plane exists in this scene.
-        const portalY = projOf(skyHole.wx, skyHole.wy).y - CFG.skyHoleDrop;
-        const clipY = Math.max(0, portalY);
+    if (transferSide === "exit" || (state === ST.FALLING && skyHole.active)) {
+        const clipY = Math.max(0, exitPlane);
         ctx.beginPath();
         ctx.rect(0, clipY, VW, Math.max(0, VH - clipY));
         ctx.clip();
     }
+
+    if (!transferSide && state !== ST.DYING) {
+        const hAbove = clamp(s.y - fy, -200, 400);
+        const sh = clamp(1 - hAbove / 420, .18, 1);
+        ctx.fillStyle = "rgba(0,0,0," + (.34 * sh).toFixed(2) + ")";
+        ctx.beginPath(); ctx.ellipse(s.x, s.y + 3, 26 * sh + 8, 10 * sh + 3, 0, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.translate(s.x, fy);
     if (player.wobble > 0.01) ctx.rotate(Math.sin(stateT * 22) * .07 * player.wobble);
     ctx.scale(st * playerFacing(), sq);
-
-    const activeSprite = rabbitForm && rabbitSprite.ready ? rabbitSprite.image : sprite;
-    const activeFrames = rabbitForm && rabbitSprite.ready ? rabbitSprite.frames : spriteFrames;
-    if (activeSprite && (spriteReady || (rabbitForm && rabbitSprite.ready))) {
-        const f = activeFrames[fi];
-        const aspect = f.sw / f.sh;
-        const dh = H * f.sh / f.referenceHeight, dw = dh * aspect;
-        const anchorX = typeof f.anchorX === "number" ? f.anchorX : f.sw / 2;
-        ctx.drawImage(activeSprite, f.sx, f.sy, f.sw, f.sh, -anchorX * dh / f.sh, -dh, dw, dh);
+    if (image) {
+        const width = height * frame.sw / frame.sh;
+        const anchorX = typeof frame.anchorX === "number" ? frame.anchorX : frame.sw / 2;
+        ctx.drawImage(image, frame.sx, frame.sy, frame.sw, frame.sh, -anchorX * height / frame.sh, -height, width, height);
     } else {
-        drawFallback(fi, H);
+        drawFallback(fi, CFG.playerH);
     }
     ctx.restore();
 }
@@ -975,17 +1173,13 @@ function drawChargeUI() {
     roundRect(bx, by, bw * power, bh, 5); ctx.fill();
     if (!showLandingHint) return;
     // 预测落点环
-    const d = jumpDist();
-    const lwx = player.wx + jumpDirPreview.x * d, lwy = player.wy + jumpDirPreview.y * d;
-    const res = findLanding(lwx, lwy);
-    const ls = projOf(lwx, lwy);
-    const ok = res.kind !== "miss";
-    ctx.strokeStyle = ok ? "rgba(126,240,200,.85)" : "rgba(255,122,107,.8)";
+    const preview = predictLanding();
+    const ls = projOf(preview.wx, preview.wy);
+    ctx.strokeStyle = "#7ef0c8";
     ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.ellipse(ls.x, ls.y, 20, 10, 0, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.ellipse(ls.x, ls.y, 6, 3, 0, 0, 7); ctx.stroke();
 }
-let jumpDirPreview = { x: 1, y: 0 };
 function roundRect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -1008,35 +1202,39 @@ function drawPopups() {
     }
 }
 function drawOverlay(t) {
-    if (missionPlatform || rabbitSubtitleTime > 0) {
+    if (missionCavity || rabbitSubtitleTime > 0) {
         ctx.save();
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#d2bba3";
         ctx.font = Math.max(30, 26 / viewScale) + "px 'STKaiti','KaiTi','FangSong',serif";
-        ctx.fillText(rabbitSubtitleTime > 0 ? "也太执着了啊喂！" : missionPlatform.sequence === CFG.rescueSuccessPlatform ? "\u8425\u6551\u6210\u529f" : "\u4efb\u52a1\u5b8c\u6210", VW / 2, VH * .24, VW * .65);
+        ctx.fillText(rabbitSubtitleTime > 0 ? "也太执着了啊喂！" : "营救成功 · 返回出发点", VW / 2, Math.max(VH * .24, promptTop), VW * .65);
         ctx.restore();
     }
     if (!started && state === ST.IDLE) {
         ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(238,243,248," + (.6 + .3 * Math.sin(t * 2.6)).toFixed(2) + ")";
+        ctx.fillStyle = "rgba(238,243,248," + (.78 + .18 * Math.sin(t * 2.6)).toFixed(2) + ")";
         ctx.font = "bold " + Math.max(24, 20 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillText("按住蓄力 · 松开传送", VW / 2, VH * 0.78, VW * .9);
+        ctx.fillText("按住蓄力 · 松开掘进", VW / 2, introY, VW * .9);
         ctx.font = Math.max(14, 12 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillStyle = "rgba(238,243,248,.45)";
-        ctx.fillText("蓄得越久跳得越远 · 落在平台中心可得 PERFECT", VW / 2, VH * 0.78 + Math.max(26, 26 / viewScale), VW * .9);
+        ctx.fillStyle = "rgba(238,243,248,.68)";
+        ctx.fillText("每跳最多 50 m · 对准前方吞出的空洞", VW / 2, introY + Math.max(26, 26 / viewScale), VW * .9);
     }
-    if (state === ST.OVER) {
+    if (state === ST.OVER || state === ST.COMPLETE) {
+        const complete = state === ST.COMPLETE;
         ctx.fillStyle = "rgba(8,10,13,.72)"; ctx.fillRect(0, 0, VW, VH);
         ctx.textAlign = "center";
         ctx.fillStyle = "#eef3f8";
         ctx.font = "bold 44px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillText("营救失败", VW / 2, VH * 0.42);
+        const result = complete ? "任务完成 · 已返回" : nextCavity ? "师傅修正已用完" : "前方已无空洞";
+        ctx.fillText(result, VW / 2, VH * 0.42);
         ctx.font = "bold 26px 'PingFang SC','Microsoft YaHei',Arial";
         ctx.fillStyle = "#7ef0c8";
-        ctx.fillText("本局得分 " + score + "   ·   最佳 " + best, VW / 2, VH * 0.42 + 46);
+        const summary = complete ? "掘进 " + formatDistance(mission.travelled) + "   ·   得分 " + score
+            : "本局得分 " + score + "   ·   最佳 " + best;
+        ctx.fillText(summary, VW / 2, VH * 0.42 + 46);
         ctx.font = "18px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillStyle = "rgba(238,243,248," + (.5 + .35 * Math.sin(t * 3)).toFixed(2) + ")";
+        ctx.fillStyle = "rgba(238,243,248," + (.8 + .15 * Math.sin(t * 3)).toFixed(2) + ")";
         ctx.fillText("点击 / 空格 再来一次", VW / 2, VH * 0.42 + 92);
     }
     // 静音标识
@@ -1045,33 +1243,15 @@ function drawOverlay(t) {
 
 /* ------------------------- 主渲染 ------------------------- */
 function render(t) {
-    drawBackground(t);
+    drawBackground();
 
-    // 深度排序绘制列表
-    const list = [];
-    for (const p of platforms) {
-        list.push({ d: p.depth, fn: () => drawPlatform(p, t) });
-        if (p.easterEgg) list.push({ d: p.depth + 0.015, fn: () => drawEasterEgg(p) });
+    for (const cavity of cavities) {
+        if (!cavity.mergedInto) drawCavity(cavity, t);
     }
-    list.push({ d: platforms[curIdx].depth + 0.01, fn: () => drawNextHint(t) });
-    const groundD = platforms[curIdx].depth;
-    if (hole.active) {
-        list.push({ d: groundD + 0.02, fn: () => drawHole(hole.wx, hole.wy, hole.r, t, false) });
-        list.push({ d: groundD + 0.05, fn: () => drawHole(hole.wx, hole.wy, hole.r, t, true) });
-    }
-    // 人物深度取“所站/所落平台”，避免落点偏移导致深度反转而穿模
-    const airPlat = (state === ST.FALLING || state === ST.HOLE_OPEN || state === ST.DYING) && landInfo && landInfo.plat
-        ? landInfo.plat : platforms[curIdx];
-    if (skyHole.active) {
-        list.push({ d: airPlat.depth + 0.025, fn: () => drawHole(skyHole.wx, skyHole.wy, skyHole.r, t, false, -CFG.skyHoleDrop) });
-    }
-    list.push({ d: airPlat.depth + 0.03, fn: () => drawPlayer(t) });
-    list.sort((a, b) => a.d - b.d);
-    for (const it of list) it.fn();
-
-    // 空中黑洞：出现在落点平台正上方的高空，人物从这里坠落
-    // The exit is behind the player: reveal at its center plane,
-    // without a second half-ellipse pushing the silhouette to the lower rim.
+    if (missionCavity) drawEasterEgg(missionCavity);
+    if (hole.active) drawHole(hole.wx, hole.wy, hole.r);
+    if (skyHole.active) drawHole(skyHole.wx, skyHole.wy, 1, skyHole.height);
+    drawPlayer();
 
     // 粒子
     for (const b of bursts) {
@@ -1081,7 +1261,7 @@ function render(t) {
 
     drawVignette();
     drawChargeUI();
-    drawPopups();
+    if (state !== ST.OVER && state !== ST.COMPLETE) drawPopups();
     drawOverlay(t);
 }
 
@@ -1090,7 +1270,6 @@ let last = performance.now();
 function loop(now) {
     const dt = clamp((now - last) / 1000, 0, 0.05);
     last = now;
-    jumpDirPreview = platforms[curIdx + 1] ? nextDirForJump() : { x: 0, y: -1 };
     update(dt);
     render(now / 1000);
     requestAnimationFrame(loop);
