@@ -5,6 +5,10 @@ const OnlineGame = (() => {
     const updateButton = document.getElementById("updateButton");
     const dialog = document.getElementById("rankDialog");
     const list = document.getElementById("rankList");
+    const rankTabs = document.getElementById("rankTabs");
+    const rankPanel = document.getElementById("rankPanel");
+    const myPlace = document.getElementById("rankMyPlace");
+    const tabs = Array.from(rankTabs.querySelectorAll("[data-metric]"));
     const form = document.getElementById("rankForm");
     const name = document.getElementById("rankName");
     const status = document.getElementById("rankStatus");
@@ -27,17 +31,31 @@ const OnlineGame = (() => {
         try { localStorage.setItem(key, value); } catch (_) {}
     }
     function getPending() {
-        try { return JSON.parse(get("cavejump_pending_score")); } catch (_) { return null; }
+        try {
+            const saved = JSON.parse(get("cavejump_pending_score"));
+            return Array.isArray(saved) ? saved : saved ? [saved] : [];
+        } catch (_) { return []; }
     }
     let pending = getPending();
     let availableVersion = null;
     let canUpdate = true;
     let player = get("cavejump_online_player");
     let standingScore = 0, rankRevision = 0, rankTimer = null;
+    let metric = "score", boardRevision = 0;
 
     function formatRank(rank) {
         if (rank <= 100) return "第" + rank + "名";
         return [5000, 1000, 500, 200, 100].find(limit => rank > limit) + "+";
+    }
+
+    function formatValue(value) {
+        if (metric === "distance") return (value / 100).toLocaleString("zh-CN", { maximumFractionDigits: 2 }) + " 米";
+        if (metric === "transfers") return value + " 次";
+        if (metric === "duration") {
+            const parts = [Math.floor(value / 3600000), Math.floor(value / 60000) % 60, Math.floor(value / 1000) % 60];
+            return parts.map(part => String(part).padStart(2, "0")).join(":") + "." + String(value % 1000).padStart(3, "0");
+        }
+        return value + " 分";
     }
 
     async function fingerprintSuffix() {
@@ -85,8 +103,15 @@ const OnlineGame = (() => {
     }
 
     async function refreshScores() {
+        const revision = ++boardRevision;
+        myPlace.textContent = "我的名次　查询中";
         try {
-            const { scores } = await request("/scores");
+            const query = new URLSearchParams({ metric });
+            if (player) query.set("player", player);
+            const { scores, own } = await request("/scores?" + query);
+            if (revision !== boardRevision) return;
+            const placement = own ? (own.rank > 100 ? "未上榜 · " : "") + formatRank(own.rank) : "未上榜";
+            myPlace.textContent = "我的名次　" + placement + (own ? "　" + formatValue(own.value) : "");
             const groups = new Map();
             scores.forEach(entry => {
                 const entries = groups.get(entry.rank) || [];
@@ -99,12 +124,12 @@ const OnlineGame = (() => {
                 if (entries.length === 1) {
                     row.textContent = formatRank(first.rank) + "　" + first.name;
                     const points = document.createElement("strong");
-                    points.textContent = String(first.score);
+                    points.textContent = formatValue(first.value);
                     row.append(points);
                 } else {
                     const details = document.createElement("details");
                     const summary = document.createElement("summary");
-                    summary.textContent = formatRank(first.rank) + "　" + first.score + " 分　" + entries.length + " 人并列";
+                    summary.textContent = formatRank(first.rank) + "　" + formatValue(first.value) + "　" + entries.length + " 人并列";
                     details.append(summary);
                     entries.forEach(entry => {
                         const member = document.createElement("div");
@@ -117,9 +142,35 @@ const OnlineGame = (() => {
             }));
             status.textContent = scores.length ? "" : "暂无成绩";
         } catch (_) {
+            if (revision !== boardRevision) return;
+            myPlace.textContent = "我的名次　暂不可用";
             status.textContent = "排行榜暂不可用";
         }
     }
+
+    function selectTab(tab) {
+        if (tab.dataset.metric === metric) return;
+        metric = tab.dataset.metric;
+        for (const item of tabs) {
+            item.setAttribute("aria-selected", String(item === tab));
+            item.tabIndex = item === tab ? 0 : -1;
+        }
+        rankPanel.setAttribute("aria-labelledby", tab.id);
+        list.replaceChildren();
+        status.textContent = "";
+        refreshScores();
+    }
+    for (const tab of tabs) tab.addEventListener("click", () => selectTab(tab));
+    rankTabs.addEventListener("keydown", event => {
+        const current = tabs.indexOf(event.target);
+        if (current < 0) return;
+        const keys = { ArrowLeft: current - 1, ArrowRight: current + 1, Home: 0, End: tabs.length - 1 };
+        if (!Object.hasOwn(keys, event.key)) return;
+        event.preventDefault();
+        const next = tabs[(keys[event.key] + tabs.length) % tabs.length];
+        selectTab(next);
+        next.focus();
+    });
 
     async function checkVersion() {
         if (document.hidden || !config.version) return;
@@ -134,11 +185,13 @@ const OnlineGame = (() => {
     rankButton.addEventListener("click", async () => {
         form.hidden = true;
         dialog.showModal();
+        player ??= crypto.randomUUID();
+        set("cavejump_online_player", player);
         const scores = refreshScores();
         try {
             const account = await post("/player", {});
             name.value = account.name;
-            submit.textContent = pending ? "提交成绩" : "保存昵称";
+            submit.textContent = pending.length ? "提交成绩" : "保存昵称";
             form.hidden = false;
         } catch (_) {
             await scores;
@@ -153,14 +206,14 @@ const OnlineGame = (() => {
         submit.disabled = true;
         try {
             const nickname = name.value.trim();
-            const account = submitted ? await post("/scores", { ...submitted, name: nickname, usedAuto: false })
+            const account = submitted.length ? await post("/scores", { runs: submitted, name: nickname, usedAuto: false })
                 : await post("/player", { name: nickname });
             name.value = account.name;
-            if (submitted && pending === submitted) {
-                pending = null;
-                set("cavejump_pending_score", "null");
+            if (submitted.length) {
+                pending = pending.filter(run => !submitted.includes(run));
+                set("cavejump_pending_score", JSON.stringify(pending));
             }
-            submit.textContent = pending ? "提交成绩" : "保存昵称";
+            submit.textContent = pending.length ? "提交成绩" : "保存昵称";
             await refreshScores();
             refreshStanding();
         } catch (error) {
@@ -189,11 +242,17 @@ const OnlineGame = (() => {
             if (!score) liveRank.hidden = true;
             else rankTimer = setTimeout(refreshStanding, 150);
         },
-        recordRun(score, distance, jumps) {
+        recordRun(score, distance, jumps, transfers, durationMs) {
             const distanceCm = Math.round(distance * 100);
             if (score <= 0 || distanceCm <= 0 || jumps <= 0) return;
-            if (pending && (pending.score > score || (pending.score === score && pending.distanceCm >= distanceCm))) return;
-            pending = { score, distanceCm, jumps };
+            const runs = [...pending, { score, distanceCm, jumps, transfers, durationMs }];
+            const bestScore = runs.reduce((best, run) => run.score > best.score ||
+                (run.score === best.score && run.distanceCm > best.distanceCm) ? run : best);
+            function bestBy(field, direction) {
+                return runs.reduce((best, run) => run[field] != null &&
+                    (!best || direction * (run[field] - best[field]) > 0) ? run : best, null);
+            }
+            pending = [...new Set([bestScore, bestBy("distanceCm", 1), bestBy("transfers", 1), bestBy("durationMs", -1)].filter(Boolean))];
             set("cavejump_pending_score", JSON.stringify(pending));
         },
         allowUpdate(allowed) {

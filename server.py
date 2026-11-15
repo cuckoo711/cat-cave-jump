@@ -27,6 +27,12 @@ def release_id():
 
 
 VERSION = release_id()
+METRICS = {
+    "score": ("score", "DESC"),
+    "distance": ("best_distance_cm", "DESC"),
+    "transfers": ("best_transfers", "DESC"),
+    "duration": ("best_duration_ms", "ASC"),
+}
 
 
 def connect():
@@ -44,7 +50,13 @@ def init_db():
         db.execute("""CREATE TABLE IF NOT EXISTS players (
             player TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE
         )""")
-        db.execute("CREATE INDEX IF NOT EXISTS scores_rank ON scores(score DESC)")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(scores)")}
+        for metric, (column, order) in METRICS.items():
+            if column not in columns:
+                db.execute(f"ALTER TABLE scores ADD COLUMN {column} INTEGER")
+            index = "scores_rank" if metric == "score" else f"scores_rank_{metric}"
+            db.execute(f"CREATE INDEX IF NOT EXISTS {index} ON scores({column} {order})")
+        db.execute("UPDATE scores SET best_distance_cm = distance_cm WHERE best_distance_cm IS NULL")
         rows = db.execute("""SELECT s.player, s.name FROM scores s
             LEFT JOIN players p ON p.player = s.player WHERE p.player IS NULL
             ORDER BY s.updated, s.player""").fetchall()
@@ -90,14 +102,25 @@ def profile(db, player, suffix, name=None):
     return name
 
 
-def leaderboard():
+def leaderboard(metric="score", player=None):
+    column, order = METRICS[metric]
     with closing(connect()) as db:
-        rows = db.execute("""WITH ranked AS (
-            SELECT *, RANK() OVER (ORDER BY score DESC) AS placement FROM scores
-        ) SELECT name, score, distance_cm, placement FROM ranked WHERE placement <= 100
-            ORDER BY score DESC, distance_cm DESC, updated ASC, player ASC""")
-        return [{"name": name, "score": score, "distanceCm": distance, "rank": rank}
-                for name, score, distance, rank in rows]
+        db.execute("BEGIN")
+        rows = db.execute(f"""WITH ranked AS (
+            SELECT *, RANK() OVER (ORDER BY {column} {order}) AS placement
+            FROM scores WHERE {column} IS NOT NULL
+        ) SELECT name, score, distance_cm, {column}, placement FROM ranked WHERE placement <= 100
+            ORDER BY placement, updated, player""").fetchall()
+        own = None
+        if player:
+            record = db.execute(f"SELECT {column} FROM scores WHERE player=?", (player,)).fetchone()
+            if record and record[0] is not None:
+                comparison = "<" if order == "ASC" else ">"
+                higher = db.execute(f"SELECT COUNT(*) FROM scores WHERE {column} {comparison} ?", record).fetchone()[0]
+                own = {"rank": higher + 1, "value": record[0]}
+        scores = [{"name": name, "score": score, "distanceCm": distance, "value": value, "rank": rank}
+                  for name, score, distance, value, rank in rows]
+        return {"scores": scores, "own": own}
 
 
 def standing(score):
@@ -108,24 +131,56 @@ def standing(score):
         return {"rank": higher + 1, "gap": None if previous is None else previous - score}
 
 
-def save_score(payload):
-    if payload.get("usedAuto", False) is not False:
+def score_values(run):
+    if run.get("usedAuto", False) is not False:
         raise ValueError("automatic_run")
-    player = str(UUID(payload["player"]))
-    score, distance, jumps = (payload[key] for key in ("score", "distanceCm", "jumps"))
+    score, distance, jumps = (run[key] for key in ("score", "distanceCm", "jumps"))
     if any(type(value) is not int for value in (score, distance, jumps)):
         raise ValueError("score")
     if not (1 <= jumps <= 30000 and 1 <= score <= 5 * jumps and 1 <= distance <= 5000 * jumps):
         raise ValueError("score")
+    transfers = run.get("transfers")
+    duration = run.get("durationMs")
+    if transfers is not None and (type(transfers) is not int or not jumps <= transfers <= jumps + 1):
+        raise ValueError("transfers")
+    if duration is not None and (
+        type(duration) is not int or not 0 < duration <= 31 * 86400000
+        or jumps < 600 or distance < 3000000
+    ):
+        raise ValueError("duration")
+    return score, distance, transfers, duration
+
+
+def save_score(payload):
+    if payload.get("usedAuto", False) is not False:
+        raise ValueError("automatic_run")
+    player = str(UUID(payload["player"]))
+    runs = payload.get("runs", [payload])
+    if not isinstance(runs, list) or not 1 <= len(runs) <= len(METRICS):
+        raise ValueError("runs")
+    values = [score_values(run) for run in runs]
+    score, distance, _, _ = max(values, key=lambda value: value[:2])
+    best_distance = max(value[1] for value in values)
+    best_transfers = max((value[2] for value in values if value[2] is not None), default=None)
+    best_duration = min((value[3] for value in values if value[3] is not None), default=None)
     with closing(connect()) as db, db:
         db.execute("BEGIN IMMEDIATE")
         name = profile(db, player, payload.get("suffix"), payload.get("name"))
-        db.execute("""INSERT INTO scores (player, name, score, distance_cm) VALUES (?, ?, ?, ?)
-            ON CONFLICT(player) DO UPDATE SET name=excluded.name, score=excluded.score,
-            distance_cm=excluded.distance_cm, updated=CURRENT_TIMESTAMP
-            WHERE excluded.score > scores.score OR
-                (excluded.score = scores.score AND excluded.distance_cm > scores.distance_cm)
-        """, (player, name, score, distance))
+        db.execute("""INSERT INTO scores
+            (player, name, score, distance_cm, best_distance_cm, best_transfers, best_duration_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(player) DO UPDATE SET
+                score=MAX(scores.score, excluded.score),
+                distance_cm=CASE WHEN (excluded.score, excluded.distance_cm) > (scores.score, scores.distance_cm)
+                    THEN excluded.distance_cm ELSE scores.distance_cm END,
+                updated=CASE WHEN (excluded.score, excluded.distance_cm) > (scores.score, scores.distance_cm)
+                    THEN CURRENT_TIMESTAMP ELSE scores.updated END,
+                best_distance_cm=MAX(COALESCE(scores.best_distance_cm, scores.distance_cm), excluded.best_distance_cm),
+                best_transfers=COALESCE(MAX(scores.best_transfers, excluded.best_transfers),
+                    scores.best_transfers, excluded.best_transfers),
+                best_duration_ms=COALESCE(MIN(scores.best_duration_ms, excluded.best_duration_ms),
+                    scores.best_duration_ms, excluded.best_duration_ms)
+        """, (player, name, score, distance, best_distance, best_transfers, best_duration))
         return name
 
 
@@ -180,7 +235,16 @@ class Handler(SimpleHTTPRequestHandler):
         if path in ("/api/health", "/api/version"):
             self.send_json(200, {"version": VERSION})
         elif path == "/api/scores":
-            self.send_json(200, {"scores": leaderboard()})
+            query = parse_qs(url.query)
+            metric = query.get("metric", ["score"])[0]
+            try:
+                player = str(UUID(query["player"][0])) if "player" in query else None
+                if metric not in METRICS:
+                    raise ValueError("metric")
+            except ValueError:
+                self.send_json(400, {"error": "invalid_query"})
+                return
+            self.send_json(200, leaderboard(metric, player))
         elif path == "/api/rank":
             try:
                 score = int(parse_qs(url.query)["score"][0])
