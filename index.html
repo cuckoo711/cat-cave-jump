@@ -208,7 +208,7 @@ const CFG = {
     playerMotionSrc: "assets/player-motion.png",
     rabbitMotionSrc: "assets/player-rabbit-motion.png",
     spriteSrc: "player.png",      // 人物雪碧图
-    easterEggSrc: "assets/easter-300.png",
+    dragonSrc: "assets/easter-300.png",
     undergroundSrc: "assets/underground-strata.png",
     frameCount: 5,                // 横向帧数
     cavityRadius: 1.25 * SCENE_UNITS_PER_METRE,
@@ -295,8 +295,8 @@ let spriteReady = false;
 const rabbitSprite = { image: null, frames: [], ready: false };
 const playerMotion = { image: null, frames: [], ready: false };
 const rabbitMotion = { image: null, frames: [], ready: false };
-let easterEggReady = false;
-const easterEggImage = GameAssets.loadImage(CFG.easterEggSrc, () => { easterEggReady = true; });
+let dragonReady = false;
+const dragonImage = GameAssets.loadImage(CFG.dragonSrc, () => { dragonReady = true; });
 
 // 内置贴图的帧边界和脚底锚点，供 file:// 禁止读取像素时使用。
 const bundledSpriteFrames = {
@@ -475,7 +475,7 @@ const hopStart = { wx: 0, wy: 0 };
 const hole = { wx: 0, wy: 0, r: 0, active: false };
 const skyHole = { wx: 0, wy: 0, height: 0, active: false };
 let cam = { wx: 0, wy: 0 };
-let missionCavity = null;
+let rescueNotice = false;
 let rabbitForm = false, rabbitTransformPending = false, rabbitSubtitleTime = 0;
 const mission = new TunnelMission();
 let nextMove = null;
@@ -580,7 +580,7 @@ function cavityDifficulty(sequence) {
     };
 }
 function createCavity(wx, wy, radius, sequence, correction = null) {
-    return { wx, wy, radius, sequence, correction, open: .12, mergedWith: null, mergedInto: null };
+    return { wx, wy, radius, sequence, correction, open: .12, mergedWith: null, mergedInto: null, seal: null };
 }
 function carveNextCavity() {
     nextMove = mission.planMove();
@@ -595,6 +595,7 @@ function carveNextCavity() {
     const minGap = difficulty.minGap, maxGap = difficulty.maxGap;
     let freeGaps = [[minGap, maxGap]];
     for (const cavity of cavities) {
+        if (cavity.seal || cavity.mergedInto?.seal) continue;
         const dx = cavity.wx - currentCavity.wx, dy = cavity.wy - currentCavity.wy;
         const along = dx * direction.x + dy * direction.y;
         const across = dx * direction.y - dy * direction.x;
@@ -638,7 +639,7 @@ function reset() {
     score = 0; combo = 0;
     usedAuto = autoJump;
     autoCharging = false;
-    missionCavity = null;
+    rescueNotice = false;
     tunnelCamera.along = 0; tunnelCamera.depth = 0;
     syncMissionHud();
     rabbitForm = false; rabbitTransformPending = false; rabbitSubtitleTime = 0;
@@ -670,7 +671,7 @@ function pressEnd() {
     autoCharging = false;
     RecordedAudio.unlock();
     if (!rabbitForm && mission.phase === "return") rabbitTransformPending = true;
-    missionCavity = null;
+    rescueNotice = false;
     landInfo = predictLanding();
     const forward = sceneForward();
     const side = jumpDir.y * forward * CFG.entranceOffset;
@@ -989,6 +990,7 @@ function resolveLanding() {
         SFX.fail();
         return;
     }
+    sealCavity(currentCavity);
     currentCavity = cavity;
     player.wx = wx; player.wy = wy;
     player.squash = 1;
@@ -997,7 +999,7 @@ function resolveLanding() {
     dustBurst(cavity, kind === "perfect" ? 26 : 14);
     const phase = mission.phase;
     mission.advance(power, nextMove);
-    if (phase === "outbound" && mission.phase === "return") missionCavity = cavity;
+    if (phase === "outbound" && mission.phase === "return") rescueNotice = true;
     if (mission.phase === "complete") {
         nextCavity = null;
         nextMove = null;
@@ -1057,9 +1059,14 @@ GameAssets.loadImage(CFG.undergroundSrc, strataImage => {
     strataPattern = ctx.createPattern(tile, "repeat");
 });
 
+function rockOffset() {
+    return {
+        x: -(tunnelCamera.along * 1.2) % (strataSize * 2),
+        y: -(tunnelCamera.depth * 2.2) % (strataSize * 2)
+    };
+}
 function drawBackground() {
-    const offsetX = -(tunnelCamera.along * 1.2) % (strataSize * 2);
-    const offsetY = -(tunnelCamera.depth * 2.2) % (strataSize * 2);
+    const { x: offsetX, y: offsetY } = rockOffset();
     ctx.save();
     ctx.translate(offsetX, offsetY);
     ctx.fillStyle = strataPattern || "#263235";
@@ -1123,12 +1130,47 @@ function cavityOutline(first, second) {
     return path;
 }
 
+function sealCavity(cavity) {
+    const center = projectCavity(cavity), texture = rockOffset();
+    cavity.seal = {
+        angle: (cavity.sequence % 2 ? 1 : -1) * rand(.14, .23),
+        x: center.x - texture.x,
+        y: center.y - texture.y
+    };
+}
+
+function drawRockPlug(shape, outline, seal) {
+    ctx.save();
+    ctx.fillStyle = "#121c20";
+    ctx.fill(outline);
+    ctx.clip(outline);
+    ctx.translate(shape.x, shape.y);
+    ctx.rotate(seal.angle);
+    ctx.scale(.93, .93);
+    ctx.translate(-shape.x, -shape.y);
+    ctx.clip(outline);
+
+    ctx.translate(shape.x - seal.x, shape.y - seal.y);
+    ctx.fillStyle = strataPattern || "#455052";
+    const extent = shape.radius * 3;
+    ctx.fillRect(seal.x - extent, seal.y - extent, extent * 2, extent * 2);
+    ctx.restore();
+
+    ctx.strokeStyle = "#0e181bc9";
+    ctx.lineWidth = 3;
+    ctx.stroke(outline);
+}
+
 function drawCavity(cavity, t) {
     const shape = projectCavity(cavity);
     const other = cavity.mergedWith ? projectCavity(cavity.mergedWith) : null;
     const visible = p => p.x + p.rx + 8 >= 0 && p.x - p.rx - 8 <= VW && p.y + p.ry + 8 >= 0 && p.y - p.ry - 8 <= VH;
     if (!visible(shape) && !(other && visible(other))) return;
     const outline = cavityOutline(shape, other);
+    if (cavity.seal) {
+        drawRockPlug(shape, outline, cavity.seal);
+        return;
+    }
     const cx = other ? (shape.x + other.x) / 2 : shape.x;
     const cy = other ? (shape.y + other.y) / 2 : shape.y;
     const extent = other ? Math.max(shape.rx, other.rx) + Math.hypot(shape.x - other.x, shape.y - other.y) / 2 : shape.rx;
@@ -1173,12 +1215,11 @@ function drawCavity(cavity, t) {
     }
 }
 
-function drawEasterEgg(cavity) {
-    if (!easterEggReady) return;
-    const s = projOf(cavity.wx, cavity.wy);
-    const width = Math.min(126, cavity.radius * 1.15);
-    const height = width * easterEggImage.naturalHeight / easterEggImage.naturalWidth;
-    ctx.drawImage(easterEggImage, s.x + cavity.radius * .28 - width / 2, s.y - height, width, height);
+function drawDragon(x, footY) {
+    if (!dragonReady || mission.phase === "outbound") return;
+    const width = CFG.playerH * .43;
+    const height = width * dragonImage.naturalHeight / dragonImage.naturalWidth;
+    ctx.drawImage(dragonImage, x + 19, footY - 28 - height, width, height);
 }
 
 /* ------------------------- 绘制：传送洞 ------------------------- */
@@ -1289,6 +1330,7 @@ function drawPlayerAt(wx, wy, cavity, asRabbit, transferSide) {
         ctx.fillStyle = "rgba(0,0,0," + (.34 * sh).toFixed(2) + ")";
         ctx.beginPath(); ctx.ellipse(s.x, s.y + 3, 26 * sh + 8, 10 * sh + 3, 0, 0, Math.PI * 2); ctx.fill();
     }
+    drawDragon(s.x, fy);
     ctx.translate(s.x, fy);
     if (player.wobble > 0.01) ctx.rotate(Math.sin(stateT * 22) * .07 * player.wobble);
     ctx.scale(st * playerFacing(), sq);
@@ -1360,7 +1402,7 @@ function drawPopups() {
     }
 }
 function drawOverlay(t) {
-    if (missionCavity || rabbitSubtitleTime > 0) {
+    if (rescueNotice || rabbitSubtitleTime > 0) {
         ctx.save();
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -1395,7 +1437,6 @@ function render(t) {
     for (const cavity of cavities) {
         if (!cavity.mergedInto) drawCavity(cavity, t);
     }
-    if (missionCavity) drawEasterEgg(missionCavity);
     if (hole.active) drawHole(hole.wx, hole.wy, hole.r);
     if (skyHole.active) drawHole(skyHole.wx, skyHole.wy, 1, skyHole.height);
     drawPlayer();
