@@ -1,0 +1,4 @@
+.git
+.env
+.game-data
+__pycache__

@@ -8,7 +8,7 @@ The rescue point is 15 km from the starting point. Each jump that lands in a new
 
 The character swallows isolated spherical cavities in the rock. At the scene scale, the character is 1.75 m tall, the cavities give them a little standing room, and the first cavities are spaced about 8–8.8 m centre to centre. Releasing the charge opens a portal ahead of the character. While entering, the character emerges in sync from the exit above the estimated landing. A precise jump lands in the prepared cavity. Otherwise the character can carve a new cavity at the landing point. If at least one third of its volume overlaps the prepared cavity, both cavities join into one opening and the jump is free. A smaller overlap uses one of the master's three corrections and leaves separate openings.
 
-The HUD shows the straight-line distance to the active target, total distance dug and last jump. Depth starts at −1,800 m and becomes more negative as the character digs deeper. The overhead mini-map shows the outbound path in teal and the return path in amber. After reaching the rescue point, the next jump transforms the character into a rabbit. Return to the starting point to complete the mission.
+The HUD shows the straight-line distance to the active target, total distance dug and last jump. Depth starts at −1,800 m and becomes more negative as the character digs deeper. The cave camera puts forward travel up on both legs. The overhead mini-map shows the outbound path in teal and the return path in amber. After reaching the rescue point, the next jump transforms the character into a rabbit. Return to the starting point to complete the mission.
 
 ## GitHub Pages
 
@@ -24,3 +24,13 @@ Use the published website link to play. Opening index.html in the repository sho
 - Landing hint button: toggle the optional landing indicator.
 
 Best scores and landing-hint preferences are stored locally in each browser.
+
+## Docker
+
+Copy `.env.example` to `.env` and run `docker compose up -d --build`. The game and API share a port bound to localhost. When serving under a reverse-proxy prefix, set `GAME_API_BASE_URL` to that prefix plus `/api`. Use `GAME_ALLOWED_ORIGINS` for any separate frontend origins.
+
+The server delivers the API address and release hash through `runtime-config.js`. Rebuild the container to publish a new release. The game checks for the new hash and offers an update between runs. For a separate static deployment, inject `apiBase` and the current release hash as `version` into `runtime-config.js` at publish time.
+
+Each browser can submit its best selected run with a nickname. The service ranks client-reported scores after basic range checks and stores one best entry per player in the `scores` volume.
+
+Turning on auto-jump makes the current run ineligible for submission, even if auto-jump is turned off later.

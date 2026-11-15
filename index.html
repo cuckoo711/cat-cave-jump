@@ -31,6 +31,25 @@
         font: 14px "Microsoft YaHei", sans-serif; touch-action: manipulation;
     }
     #gameControls button:focus-visible { outline: 2px solid #7ef0c8; outline-offset: 3px; }
+    #rankDialog {
+        box-sizing: border-box; width: min(420px, calc(100vw - 24px)); max-height: 85dvh;
+        padding: 14px; border: 1px solid #445954; border-radius: 12px;
+        background: #101b1b; color: #e6f1ef; font: 15px/1.4 "Microsoft YaHei", sans-serif;
+        touch-action: pan-y;
+    }
+    #rankDialog::backdrop { background: #080c0caa; }
+    #rankDialog button, #rankDialog input {
+        min-height: 44px; padding: 6px 10px; border: 1px solid #68737d; border-radius: 8px;
+        background: #20262d; color: #eef3f8; font: inherit;
+    }
+    #rankClose { display: block; margin-left: auto; min-width: 44px; }
+    #rankList { max-height: 48dvh; overflow: auto; touch-action: pan-y; margin: 0 0 10px; padding-left: 28px; }
+    #rankList li { padding: 5px 0; }
+    #rankList li strong { float: right; margin-inline: 8px; }
+    #rankList li span { overflow-wrap: anywhere; }
+    #rankForm:not([hidden]) { display: flex; gap: 8px; }
+    #rankName { flex: 1; min-width: 0; user-select: text; -webkit-user-select: text; }
+    #rankStatus:empty { display: none; }
 
     #ui {
         position: absolute;
@@ -54,10 +73,10 @@
         font: 12px/1.4 "PingFang SC", "Microsoft YaHei", sans-serif;
         font-variant-numeric: tabular-nums;
     }
-    #missionHud header, #missionHud footer, #missionHud dl { display: flex; justify-content: space-between; gap: 6px; }
+    #missionHud footer, #missionHud dl { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
     #missionPhase { font-size: 13px; font-weight: 700; color: #a6ebd8; }
-    #missionHud footer, #missionHud dt, #missionHud header span { color: #b0c0bc; }
-    #missionHud dl { margin: 8px 0 6px; }
+    #missionHud footer, #missionHud dt { color: #b0c0bc; }
+    #missionHud dl { margin: 0 0 6px; }
     #missionHud dd { margin: 0; font-size: clamp(14px, 2.8vw, 20px); font-weight: 700; white-space: nowrap; }
     #missionMap { display: block; width: 100%; height: 58px; }
     #missionCorrection[data-active="true"] { color: #ffcb86; }
@@ -88,16 +107,17 @@
             font-size: 15px; letter-spacing: 0; font-variant-numeric: tabular-nums;
         }
         #ui small { margin: 0; letter-spacing: 0; }
-        #ui .buildVersion { display: none; }
         #score { display: inline; }
         #ui .landingBudget { display: flex; align-items: center; gap: 5px; }
         #ui .correctionLabel { margin: 0; }
         #lives { margin: 0; font-size: 18px; letter-spacing: 2px; }
         #missionHud { top: calc(max(8px, env(safe-area-inset-top)) + 44px); width: auto; padding: 7px 9px; }
         #missionHud dd { font-size: 16px; }
-        #missionHud dl { margin: 5px 0 4px; }
+        #missionHud dl { margin-bottom: 4px; }
         #missionMap { height: 46px; }
         #gameControls { flex-direction: row; justify-content: flex-end; }
+        #gameControls { flex-wrap: wrap; }
+        #gameControls button { min-width: 0; padding-inline: 8px; }
     }
 </style>
 </head>
@@ -106,27 +126,40 @@
     <div>得分 <span id="score">0</span></div>
     <small id="best">最佳 0</small>
     <div class="landingBudget"><small class="correctionLabel" aria-hidden="true">师傅修正</small><span id="lives" role="img" aria-label="师傅修正剩余 3 次">♥♥♥</span></div>
-    <small class="buildVersion">v1.1.6</small>
 </div>
 <section id="missionHud" aria-label="往返任务与小地图">
-    <header><strong id="missionPhase" role="status">去程 · 任务点</strong><span>单程 15 km</span></header>
     <dl>
         <div><dt>距目标</dt><dd id="missionRemaining">15.00 km</dd></div>
         <div><dt>已掘进</dt><dd id="missionDistance">0 m</dd></div>
         <div><dt>上一跳</dt><dd id="missionJump">0 m</dd></div>
     </dl>
     <canvas id="missionMap" width="540" height="116" role="img" aria-label="任务路线俯视图"></canvas>
-    <footer><span id="missionDepth">相对深度 -1800 m</span><span id="missionCorrection">航向矫正 0 次</span></footer>
+    <footer><strong id="missionPhase" role="status">去程</strong><span id="missionDepth">相对深度 -1800 m</span><span id="missionCorrection">航向矫正 0 次</span></footer>
 </section>
 <canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
 <div id="gameControls">
 <button id="muteButton" type="button" aria-pressed="false" aria-label="静音">静音</button>
 <button id="landingHintButton" type="button" aria-pressed="false">落点提示：关</button>
+<button id="autoJumpButton" type="button" aria-pressed="false">自动跳：关</button>
+<button id="rankButton" type="button" hidden>排行榜</button>
+<button id="updateButton" type="button" hidden>更新</button>
 </div>
+<dialog id="rankDialog" aria-label="排行榜">
+    <button id="rankClose" type="button" aria-label="关闭">×</button>
+    <ol id="rankList"></ol>
+    <div id="rankStatus" role="status"></div>
+    <form id="rankForm" hidden>
+        <input id="rankName" aria-label="昵称" placeholder="昵称" maxlength="16" required>
+        <button type="submit">提交成绩</button>
+    </form>
+</dialog>
 
+<script src="runtime-config.js"></script>
 <script src="audio-bank.js"></script>
+<script src="assets/cave-bgm.js"></script>
 <script src="game-audio.js"></script>
 <script src="tunnel-mission.js"></script>
+<script src="online.js"></script>
 <script>
 "use strict";
 /* =====================================================================
@@ -176,10 +209,12 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const missionPanel = document.getElementById("missionHud");
 const controls = document.getElementById("gameControls");
+const autoJumpButton = document.getElementById("autoJumpButton");
+const rankDialog = document.getElementById("rankDialog");
 const portraitLayout = window.matchMedia("(max-width: 600px) and (orientation: portrait)");
 // Keep physics in world units; scale only the display for small screens.
 let DPR = 1, VW = 0, VH = 0, viewScale = 1;
-let sceneCenterX = 0, sceneCenterY = 0, introY = 0, promptTop = 0;
+let sceneCenterX = 0, sceneCenterY = 0, promptTop = 0;
 function resize() {
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     const visual = window.visualViewport;
@@ -190,13 +225,12 @@ function resize() {
     const stageWidth = !portrait && width >= 680 ? panel.left - 12 : width;
     const stageTop = portrait ? panel.bottom + 10 : 0;
     const controlsTop = portrait ? controls.getBoundingClientRect().top : height;
-    const stageBottom = Math.max(stageTop + 1, controlsTop - 56);
-    const stageScale = portrait ? (stageBottom - stageTop) / 600 : 1;
-    viewScale = Math.min(1, stageWidth / 1000, height / 720, stageScale);
+    const stageBottom = Math.max(stageTop + 1, controlsTop - 18);
+    const stageScale = portrait ? (stageBottom - stageTop) / 900 : 1;
+    viewScale = Math.min(1, stageWidth / 980, height / 900, stageScale);
     VW = width / viewScale; VH = height / viewScale;
     sceneCenterX = stageWidth / (2 * viewScale);
     sceneCenterY = portrait ? (stageTop + stageBottom) / (2 * viewScale) + CFG.cavityRadius * .9 : VH * .58;
-    introY = portrait ? (controlsTop - 42) / viewScale : VH * .78;
     promptTop = width < 720 ? (panel.bottom + 20) / viewScale : 0;
     canvas.width = Math.round(width * DPR); canvas.height = Math.round(height * DPR);
     canvas.style.width = width + "px"; canvas.style.height = height + "px";
@@ -205,6 +239,7 @@ function resize() {
 window.addEventListener("resize", resize);
 if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
 resize();
+if (window.ResizeObserver) new ResizeObserver(resize).observe(controls);
 
 /* ------------------------- 工具 ------------------------- */
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -212,6 +247,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (a, b) => a + Math.random() * (b - a);
 // Project the mission's length, lateral drift and depth onto the cave view.
 const projectMission = ({ x, y, z }) => ({ x: x + y * .32, y: z + y * .32 });
+const sceneForward = () => mission.phase === "outbound" ? 1 : -1;
 
 /* ------------------------- 素材加载 ------------------------- */
 let sprite = null;          // 处理好的透明 canvas
@@ -367,7 +403,7 @@ const SFX = {
     hop() { RecordedAudio.play('jump'); },
     portal() { this.noise(.32, .16, 700); this.tone(520, 90, .3, "sine", .12); },
     drop() { this.tone(700, 180, .35, "triangle", .1); },
-    land() { RecordedAudio.play('meow'); },
+    land(allowLine) { RecordedAudio.land(allowLine); },
     perfect() { /* Keep the landing voice clear. */ },
     fail() { this.tone(300, 60, .7, "sawtooth", .12); }
 };
@@ -375,6 +411,7 @@ const SFX = {
 /* ------------------------- 游戏状态 ------------------------- */
 const ST = { IDLE: 0, CHARGING: 1, SINK: 2, FALLING: 4, LAND: 5, DYING: 6, OVER: 7, HOP: 8, COMPLETE: 9, TAKEOFF: 10 };
 let state = ST.IDLE;
+let autoJump = false, autoCharging = false, usedAuto = false;
 let stateT = 0;                 // 当前状态已持续时间(s)
 let score = 0, combo = 0;
 let landingCorrections = CFG.landingCorrectionLimit;
@@ -388,6 +425,9 @@ let best = +(localStorage.getItem("cavejump_best") || 0);
 document.getElementById("best").textContent = "最佳 " + best;
 
 function saveBest() {
+    if (!usedAuto) OnlineGame.recordRun(score, mission.travelled, mission.route.length - 1);
+    setAutoJump(false);
+    OnlineGame.allowUpdate(true);
     if (score <= best) return;
     best = score;
     localStorage.setItem("cavejump_best", best);
@@ -404,7 +444,6 @@ const hopStart = { wx: 0, wy: 0 };
 const hole = { wx: 0, wy: 0, r: 0, active: false };
 const skyHole = { wx: 0, wy: 0, height: 0, active: false };
 let cam = { wx: 0, wy: 0 };
-let started = false;
 let missionCavity = null;
 let rabbitForm = false, rabbitTransformPending = false, rabbitSubtitleTime = 0;
 const mission = new TunnelMission();
@@ -426,7 +465,7 @@ function formatDistance(metres) {
 }
 
 function syncMissionHud() {
-    const phases = { outbound: "去程 · 任务点", return: "返程 · 出发点", complete: "往返完成" };
+    const phases = { outbound: "去程", return: "返程", complete: "往返完成" };
     const phase = phases[mission.phase];
     if (missionHud.phase.textContent !== phase) missionHud.phase.textContent = phase;
     missionHud.remaining.textContent = formatDistance(mission.remaining);
@@ -459,7 +498,6 @@ function drawMissionMap() {
     mapCtx.beginPath(); mapCtx.roundRect(0, 1, width, height - 2, 7); mapCtx.fill();
     mapCtx.fillStyle = "#b0c0bc";
     mapCtx.font = "11px 'Microsoft YaHei', sans-serif";
-    mapCtx.fillText("俯视", 8, 14);
     mapCtx.textAlign = "right";
     mapCtx.fillText("● 出发点   ◆ 任务点", width - 8, 14);
     mapCtx.textAlign = "left";
@@ -554,6 +592,7 @@ function carveNextCavity() {
 function reset() {
     landingCorrections = CFG.landingCorrectionLimit; syncLandingCorrections();
     RecordedAudio.stopVoice();
+    OnlineGame.allowUpdate(true);
     cavities.length = 0;
     currentCavity = createCavity(0, 0, CFG.cavityRadius, 0);
     currentCavity.open = 1;
@@ -566,12 +605,14 @@ function reset() {
     cam.wx = lerp(currentCavity.wx, nextCavity.wx, .5);
     cam.wy = lerp(currentCavity.wy, nextCavity.wy, .5);
     score = 0; combo = 0;
+    usedAuto = autoJump;
+    autoCharging = false;
     missionCavity = null;
     tunnelCamera.along = 0; tunnelCamera.depth = 0;
     syncMissionHud();
     rabbitForm = false; rabbitTransformPending = false; rabbitSubtitleTime = 0;
     document.getElementById("score").textContent = 0;
-    state = ST.IDLE; stateT = 0; started = false;
+    state = ST.IDLE; stateT = 0;
     popups.length = 0; bursts.length = 0;
 }
 reset();
@@ -581,11 +622,11 @@ if (window.visualViewport) window.visualViewport.addEventListener("resize", draw
 /* ------------------------- 输入 ------------------------- */
 function pressStart() {
     RecordedAudio.unlock();
-    RecordedAudio.stopVoice();
+    RecordedAudio.stopVoice(true);
     SFX.ensure();
     if (state === ST.OVER || state === ST.COMPLETE) { reset(); return; }
-    if (!started) started = true;
     if (state !== ST.IDLE) return;
+    OnlineGame.allowUpdate(false);
     state = ST.CHARGING; stateT = 0; power = 0;
     jumpDir = nextDirForJump();
     hopStart.wx = player.wx; hopStart.wy = player.wy;
@@ -593,15 +634,17 @@ function pressStart() {
 }
 function pressEnd() {
     if (state !== ST.CHARGING) return;
-    if (power < 0.06) { state = ST.IDLE; hole.active = false; player.sink = 0; return; }  // 轻点取消
+    if (power < 0.06) { cancelCharge(); return; }
+    autoCharging = false;
     RecordedAudio.unlock();
     if (!rabbitForm && mission.phase === "return") rabbitTransformPending = true;
     missionCavity = null;
     landInfo = predictLanding();
-    const dx = jumpDir.x * CFG.entranceOffset, dy = jumpDir.y * CFG.entranceOffset;
-    // Keep the portal above the curved lower rim even on unusual route bearings.
-    hole.wx = hopStart.wx + dx;
-    hole.wy = hopStart.wy + clamp(dy, -18, -CFG.entranceMinRise);
+    const forward = sceneForward();
+    const side = jumpDir.y * forward * CFG.entranceOffset;
+    const rise = clamp(-jumpDir.x * forward * CFG.entranceOffset, -18, -CFG.entranceMinRise);
+    hole.wx = hopStart.wx - rise * forward;
+    hole.wy = hopStart.wy + side * forward;
     hole.active = true; hole.r = .18;
     state = ST.TAKEOFF; stateT = 0;
 }
@@ -613,12 +656,16 @@ function nextDirForJump() {
 }
 function playerFacing() {
     const direction = state === ST.IDLE || state === ST.CHARGING ? nextDirForJump() : jumpDir;
-    return direction.x < 0 ? -1 : 1;
+    return direction.y * sceneForward() < 0 ? -1 : 1;
 }
 let activePointer = null, keyboardHeld = false;
 function cancelCharge() {
-    if (state === ST.CHARGING) { state = ST.IDLE; stateT = 0; power = 0; hole.active = false; player.sink = 0; }
-    RecordedAudio.stopVoice();
+    if (state === ST.CHARGING) {
+        autoCharging = false;
+        state = ST.IDLE; stateT = 0; power = 0; hole.active = false; player.sink = 0;
+        OnlineGame.allowUpdate(mission.route.length === 1);
+    }
+    RecordedAudio.stopVoice(true);
 }
 function releasePointer() {
     const id = activePointer;
@@ -644,6 +691,20 @@ window.addEventListener("orientationchange", cancelInput);
 document.addEventListener("visibilitychange", () => { if (document.hidden) cancelInput(); });
 const muteButton = document.getElementById("muteButton");
 const landingHintButton = document.getElementById("landingHintButton");
+function setAutoJump(active) {
+    if (autoJump === active) return;
+    autoJump = active;
+    autoJumpButton.setAttribute("aria-pressed", String(active));
+    autoJumpButton.textContent = active ? "自动跳：开" : "自动跳：关";
+    if (active) {
+        if (state === ST.OVER || state === ST.COMPLETE) reset();
+        usedAuto = true;
+        RecordedAudio.unlock();
+    } else if (autoCharging) {
+        cancelCharge();
+    }
+}
+autoJumpButton.addEventListener("click", () => setAutoJump(!autoJump));
 let showLandingHint = false;
 try { showLandingHint = localStorage.getItem("cavejump_landing_hint") === "true"; } catch (_) {}
 function syncLandingHintButton() {
@@ -665,7 +726,7 @@ function toggleMute() {
 }
 muteButton.addEventListener("click", toggleMute);
 window.addEventListener("keydown", e => {
-    if (e.target === muteButton || e.target === landingHintButton) return;
+    if (controls.contains(e.target) || rankDialog.open) return;
     if (e.code === "Space" && !e.repeat && !keyboardHeld && activePointer === null) {
         e.preventDefault(); keyboardHeld = true; pressStart();
     }
@@ -740,22 +801,39 @@ function update(dt) {
         if (portraitLayout.matches && currentCavity.mergedWith) {
             let left = Infinity, right = -Infinity;
             for (const cavity of [currentCavity, currentCavity.mergedWith, ahead]) {
-                const x = cavity.wx, width = cavity.radius * CFG.cavityHorizontalRadius;
+                const x = cavity.wy * sceneForward(), width = cavity.radius * CFG.cavityHorizontalRadius;
                 left = Math.min(left, x - width);
                 right = Math.max(right, x + width);
             }
-            tx = (left + right) / 2;
+            ty = (left + right) / 2 * sceneForward();
         }
     }
     const k = 1 - Math.pow(0.0016, dt);
     cam.wx = lerp(cam.wx, tx, k); cam.wy = lerp(cam.wy, ty, k);
     const tunnelPosition = projectMission(mission.position);
-    tunnelCamera.along = lerp(tunnelCamera.along, tunnelPosition.x, k);
-    tunnelCamera.depth = lerp(tunnelCamera.depth, tunnelPosition.y, k);
+    const forward = sceneForward();
+    tunnelCamera.along = lerp(tunnelCamera.along, tunnelPosition.y * forward, k);
+    const depth = forward === 1 ? -tunnelPosition.x : tunnelPosition.x - 2 * TunnelMission.legDistance;
+    tunnelCamera.depth = lerp(tunnelCamera.depth, depth, k);
 
     switch (state) {
+        case ST.IDLE: {
+            if (autoJump && stateT >= .28 && !rankDialog.open && !document.hidden) {
+                pressStart();
+                autoCharging = state === ST.CHARGING;
+            }
+            break;
+        }
         case ST.CHARGING: {
             power = clamp(stateT * 1000 / CFG.chargeMs, 0, 1);
+            if (autoCharging && !rankDialog.open && !document.hidden) {
+                const gap = Math.hypot(nextCavity.wx - hopStart.wx, nextCavity.wy - hopStart.wy);
+                const charge = clamp((gap - CFG.jumpMin) / (CFG.jumpMax - CFG.jumpMin), .06, 1);
+                if (power >= charge) {
+                    power = charge;
+                    pressEnd();
+                }
+            }
             break;
         }
         case ST.TAKEOFF: {
@@ -844,7 +922,7 @@ function resolveLanding() {
     player.wx = wx; player.wy = wy;
     player.squash = 1;
     state = ST.LAND; stateT = 0;
-    SFX.land();
+    SFX.land(kind !== "correction");
     dustBurst(projOf(wx, wy), kind === "perfect" ? 26 : 14);
     const phase = mission.phase;
     mission.advance(power, nextMove);
@@ -854,6 +932,10 @@ function resolveLanding() {
         nextMove = null;
     } else {
         nextCavity = carveNextCavity();
+        if (phase !== mission.phase) {
+            cam.wx = lerp(currentCavity.wx, nextCavity.wx, .5);
+            cam.wy = lerp(currentCavity.wy, nextCavity.wy, .5);
+        }
     }
     syncMissionHud();
     if (kind === "perfect") {
@@ -876,9 +958,10 @@ function dustBurst(sp, n) {
     }
 }
 function projOf(wx, wy) {
+    const forward = sceneForward();
     return {
-        x: wx - cam.wx + sceneCenterX,
-        y: wy - cam.wy + sceneCenterY
+        x: (wy - cam.wy) * forward + sceneCenterX,
+        y: (cam.wx - wx) * forward + sceneCenterY
     };
 }
 
@@ -1208,17 +1291,8 @@ function drawOverlay(t) {
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#d2bba3";
         ctx.font = Math.max(30, 26 / viewScale) + "px 'STKaiti','KaiTi','FangSong',serif";
-        ctx.fillText(rabbitSubtitleTime > 0 ? "也太执着了啊喂！" : "营救成功 · 返回出发点", VW / 2, Math.max(VH * .24, promptTop), VW * .65);
+        ctx.fillText(rabbitSubtitleTime > 0 ? "也太执着了啊喂！" : "营救成功", VW / 2, Math.max(VH * .24, promptTop), VW * .65);
         ctx.restore();
-    }
-    if (!started && state === ST.IDLE) {
-        ctx.textAlign = "center";
-        ctx.fillStyle = "rgba(238,243,248," + (.78 + .18 * Math.sin(t * 2.6)).toFixed(2) + ")";
-        ctx.font = "bold " + Math.max(24, 20 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillText("按住蓄力 · 松开掘进", VW / 2, introY, VW * .9);
-        ctx.font = Math.max(14, 12 / viewScale) + "px 'PingFang SC','Microsoft YaHei',Arial";
-        ctx.fillStyle = "rgba(238,243,248,.68)";
-        ctx.fillText("每跳最多 50 m · 对准前方吞出的空洞", VW / 2, introY + Math.max(26, 26 / viewScale), VW * .9);
     }
     if (state === ST.OVER || state === ST.COMPLETE) {
         const complete = state === ST.COMPLETE;
@@ -1235,10 +1309,8 @@ function drawOverlay(t) {
         ctx.fillText(summary, VW / 2, VH * 0.42 + 46);
         ctx.font = "18px 'PingFang SC','Microsoft YaHei',Arial";
         ctx.fillStyle = "rgba(238,243,248," + (.8 + .15 * Math.sin(t * 3)).toFixed(2) + ")";
-        ctx.fillText("点击 / 空格 再来一次", VW / 2, VH * 0.42 + 92);
+        ctx.fillText("再来一次", VW / 2, VH * 0.42 + 92);
     }
-    // 静音标识
-
 }
 
 /* ------------------------- 主渲染 ------------------------- */

@@ -1,0 +1,21 @@
+services:
+  game:
+    build: .
+    ports:
+      - "127.0.0.1:${GAME_PORT:-18089}:8080"
+    environment:
+      GAME_API_BASE_URL: ${GAME_API_BASE_URL:-/api}
+      GAME_ALLOWED_ORIGINS: ${GAME_ALLOWED_ORIGINS:-}
+    volumes:
+      - scores:/data
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+volumes:
+  scores:
