@@ -6,6 +6,7 @@ services:
     environment:
       GAME_API_BASE_URL: ${GAME_API_BASE_URL:-/api}
       GAME_ALLOWED_ORIGINS: ${GAME_ALLOWED_ORIGINS:-}
+      GAME_STATIC_CDN_URL: ${GAME_STATIC_CDN_URL:-}
     volumes:
       - scores:/data
     read_only: true

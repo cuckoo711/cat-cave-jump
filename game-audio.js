@@ -1,61 +1,66 @@
 /* Original recording clips are embedded in audio-bank.js for file:// playback. */
 "use strict";
-const BGM_VOLUME = .22;
-
 const RecordedAudio = {
     ctx: null, master: null, buffers: {}, active: null, previous: {},
-    unlocked: false, lastEvent: null, errors: [],
+    unlocked: false, muted: false, lastEvent: null, errors: [],
     landingsSinceLine: 0,
-    bgmBuffer: null, bgmSource: null, bgmGain: null,
+    bgm: null, bgmLoading: true,
     init() {
+        const music = GameAssets.loadScript('assets/cave-bgm.js').then(() => this.initBgm());
         try {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
             this.master = this.ctx.createGain();
             this.master.gain.value = .82;
             this.master.connect(this.ctx.destination);
-            const effects = Object.entries(window.GAME_AUDIO_BANK || {}).map(async ([group, clips]) => {
-                const eventGroup = group === 'idle' ? 'line' : group;
-                this.buffers[eventGroup] = [];
-                for (const clip of clips) {
-                    try {
-                        const buffer = await this.decode(clip.base64);
-                        this.buffers[eventGroup].push({ ...clip, buffer });
-                    } catch (error) { this.errors.push(clip.id + ': ' + error.message); }
-                }
-            });
-            this.ready = Promise.all([...effects, this.loadBgm()]);
-        } catch (error) { this.errors.push(error.message); this.ready = Promise.resolve(); }
+            const effects = GameAssets.loadScript('audio-bank.js').then(() => this.loadEffects());
+            this.ready = Promise.all([music, effects]);
+        } catch (error) { this.errors.push(error.message); this.ready = music; }
+    },
+    loadEffects() {
+        return Promise.all(Object.entries(window.GAME_AUDIO_BANK || {}).map(async ([group, clips]) => {
+            const eventGroup = group === 'idle' ? 'line' : group;
+            this.buffers[eventGroup] = [];
+            for (const clip of clips) {
+                try {
+                    const buffer = await this.decode(clip.base64);
+                    this.buffers[eventGroup].push({ ...clip, buffer });
+                } catch (error) { this.errors.push(clip.id + ': ' + error.message); }
+            }
+        }));
     },
     decode(base64) {
         const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
         return this.ctx.decodeAudioData(bytes.buffer);
     },
-    async loadBgm() {
-        if (!window.GAME_BGM) return;
-        try {
-            this.bgmBuffer = await this.decode(window.GAME_BGM.base64);
-            this.startBgm();
-        } catch (error) { this.errors.push('bgm: ' + error.message); }
+    initBgm() {
+        this.bgmLoading = false;
+        const notify = () => document.dispatchEvent(new Event('bgmstatechange'));
+        if (!window.GAME_BGM) { notify(); return; }
+        const audio = new Audio('data:audio/mp4;base64,' + window.GAME_BGM.base64);
+        audio.preload = 'auto';
+        audio.loop = true;
+        audio.muted = this.muted;
+        this.bgm = audio;
+        for (const event of ['playing', 'pause', 'error']) audio.addEventListener(event, notify);
+        if (navigator.audioSession) {
+            try { navigator.audioSession.type = 'playback'; } catch (_) {}
+        }
+        this.startBgm();
+        notify();
     },
     startBgm() {
-        if (!this.bgmBuffer || this.bgmSource || !this.unlocked || this.ctx.state !== 'running' || document.hidden) return;
-        const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
-        const now = this.ctx.currentTime;
-        source.buffer = this.bgmBuffer;
-        source.loop = true;
-        source.loopStart = window.GAME_BGM.start;
-        source.loopEnd = Math.min(this.bgmBuffer.duration, window.GAME_BGM.end);
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(BGM_VOLUME, now + .15);
-        source.connect(gain).connect(this.master);
-        this.bgmSource = source;
-        this.bgmGain = gain;
-        source.start(0, source.loopStart);
+        if (!this.bgm || this.bgm.muted || !this.bgm.paused) return;
+        this.bgm.play().catch(error => {
+            if (error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+                this.errors.push('bgm: ' + error.message);
+            }
+            document.dispatchEvent(new Event('bgmstatechange'));
+        });
     },
     unlock() {
         this.unlocked = true;
-        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().then(() => this.startBgm()).catch(() => {});
-        else this.startBgm();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        this.startBgm();
     },
     stopVoice(keepLine = false) {
         if (!this.active || (keepLine && this.active.group === 'line')) return;
@@ -68,8 +73,14 @@ const RecordedAudio = {
         try { current.source.stop(t + .015); } catch (_) {}
     },
     setMuted(muted) {
+        this.muted = muted;
         if (this.master) this.master.gain.value = muted ? 0 : .82;
         if (muted) this.stopVoice();
+        if (this.bgm) {
+            this.bgm.muted = muted;
+            if (muted) this.bgm.pause();
+            else this.startBgm();
+        }
     },
     land(allowLine) {
         if (allowLine && ++this.landingsSinceLine >= 3 && this.play('line')) {
@@ -79,7 +90,7 @@ const RecordedAudio = {
         this.play('meow');
     },
     play(group) {
-        if (!this.ctx || this.ctx.state !== 'running' || !this.unlocked || SFX.muted || document.hidden) return false;
+        if (!this.ctx || this.ctx.state !== 'running' || !this.unlocked || this.muted || document.hidden) return false;
         if (this.active?.group === 'line') return false;
         const clips = this.buffers[group] || [];
         if (!clips.length) return false;
@@ -104,13 +115,12 @@ const RecordedAudio = {
     }
 };
 RecordedAudio.init();
+document.addEventListener('click', event => {
+    if (!event.target?.closest?.('#muteButton')) RecordedAudio.startBgm();
+}, true);
+document.addEventListener('keydown', event => {
+    if (event.code !== 'KeyM' && !event.target?.closest?.('#muteButton')) RecordedAudio.startBgm();
+}, true);
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) RecordedAudio.stopVoice();
-    if (RecordedAudio.bgmGain) {
-        const now = RecordedAudio.ctx.currentTime;
-        const volume = RecordedAudio.bgmGain.gain;
-        volume.cancelScheduledValues(now);
-        volume.setTargetAtTime(document.hidden ? 0 : BGM_VOLUME, now, .04);
-    }
-    if (!document.hidden) RecordedAudio.startBgm();
 });

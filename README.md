@@ -1,36 +1,47 @@
 # 仙人跳 · Fairy jump
 
-Browser game with touch and keyboard controls. Open `index.html` directly or serve the project as a static site. Hold to charge and release to jump. In both forms, the character dips slightly before takeoff and bends their knees on landing before standing back up.
+一款支持键盘和触屏的地下营救游戏。单程约 15 公里，到达任务点后返航。
 
-## Underground rescue mission
+## 游玩
 
-The rescue point is 15 km from the starting point. Each jump that lands in a new cavity digs up to 50 m based on charge. Each jump can drift up to 10° from the previous heading in any direction. If the angle to the active target exceeds 30°, the heading automatically realigns. The next cavity is carved along that heading, which is recorded when the character lands. Near a destination, the next cavity lines up with the target so an in-range jump ends there.
+- 按住屏幕、鼠标或空格蓄力，松开后通过传送门前进，每跳最多掘进 50 米。
+- 右下角「···」收纳声音、落点提示和自动跳。键盘可按 `M` 控制声音。
+- 每连续 5 次 PERFECT 恢复 1 次师傅修正，最多持有 3 次。
+- 每局第一次开启自动跳都需确认。只要本局开启过，成绩就不会进入排行榜。
+- 联机时，左下角「排行榜」可查看榜单、修改昵称，并提交符合条件的结算成绩。同分并列，前 100 名显示精确名次。游戏内会显示当前分数的名次和与上一名的分差。
 
-The character swallows isolated spherical cavities in the rock. At the scene scale, the character is 1.75 m tall, the cavities give them a little standing room, and the first cavities are spaced about 8–8.8 m centre to centre. Releasing the charge opens a portal ahead of the character. While entering, the character emerges in sync from the exit above the estimated landing. A precise jump lands in the prepared cavity. Otherwise the character can carve a new cavity at the landing point. If at least one third of its volume overlaps the prepared cavity, both cavities join into one opening and the jump is free. A smaller overlap uses one of the master's three corrections and leaves separate openings.
+音乐在浏览器允许时自动播放。若首次打开时被拦截，在右下角菜单点「开启声音」。
 
-The HUD shows the straight-line distance to the active target, total distance dug and last jump. Depth starts at −1,800 m and becomes more negative as the character digs deeper. The cave camera puts forward travel up on both legs. The overhead mini-map shows the outbound path in teal and the return path in amber. After reaching the rescue point, the next jump transforms the character into a rabbit. Return to the starting point to complete the mission.
+## 本地运行
 
-## GitHub Pages
+双击 `index.html` 可离线游玩。使用 Python 启动联机版时，排行榜保存在 `.game-data`。
 
-Upload these files to the root of a repository, preserving the assets directory.
-In Settings > Pages, choose Deploy from a branch, main and /(root), then Save.
-Use the published website link to play. Opening index.html in the repository shows source.
+```sh
+python server.py
+```
 
-## Controls
+浏览器访问 `http://127.0.0.1:8080/`。
 
-- Mouse or touch: hold and release.
-- Space: hold and release.
-- M or the sound button: toggle sound.
-- Landing hint button: toggle the optional landing indicator.
+## Docker 部署
 
-Best scores and landing-hint preferences are stored locally in each browser.
+复制 `.env.example` 为 `.env`，按部署环境填入配置，再启动服务。
 
-## Docker
+```sh
+docker compose up -d --build
+docker compose ps
+```
 
-Copy `.env.example` to `.env` and run `docker compose up -d --build`. The game and API share a port bound to localhost. When serving under a reverse-proxy prefix, set `GAME_API_BASE_URL` to that prefix plus `/api`. Use `GAME_ALLOWED_ORIGINS` for any separate frontend origins.
+| 配置 | 用途 |
+| --- | --- |
+| `GAME_PORT` | 宿主机的回环监听端口，默认 `18089` |
+| `GAME_API_BASE_URL` | 由 `runtime-config.js` 注入浏览器的 API 路径。根路径部署可用 `/api`，站点已正确处理目录末尾斜杠时可用 `./api` |
+| `GAME_ALLOWED_ORIGINS` | 分开托管前端时允许的来源，逗号分隔 |
+| `GAME_STATIC_CDN_URL` | 可选的 HTTPS CDN 域名，留空时从游戏站点加载素材 |
 
-The server delivers the API address and release hash through `runtime-config.js`. Rebuild the container to publish a new release. The game checks for the new hash and offers an update between runs. For a separate static deployment, inject `apiBase` and the current release hash as `version` into `runtime-config.js` at publish time.
+反代可指向 `127.0.0.1:18089`，保留请求的 Host。榜单和昵称存储在 Compose 的 `scores` 卷中，更新容器时继续使用此卷。排行榜接收客户端结算成绩，服务端执行基本范围校验。
 
-Each browser can submit its best selected run with a nickname. The service ranks client-reported scores after basic range checks and stores one best entry per player in the `scores` volume.
+## 发布更新
 
-Turning on auto-jump makes the current run ineligible for submission, even if auto-jump is turned off later.
+重新构建容器即可发布新版。游戏根据版本接口提示更新，玩家可在局间切换版本。
+
+启用 CDN 后，图片和音频包从 `/assets/cdn/` 加载。缓存键保留 `v` 版本参数，加载失败时会从游戏站点重试。页面、运行时配置、排行榜和版本接口走游戏站点。生产地址和 `.env` 通过部署环境维护。
