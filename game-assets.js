@@ -10,7 +10,7 @@ const GameAssets = (() => {
 
     function cdnUrl(path) {
         if (!cdn) return null;
-        const file = path.replace(/^assets\//, "");
+        const file = path.split("/").pop();
         const url = new URL("/assets/cdn/" + file, cdn);
         url.searchParams.set("v", config.version);
         return url.href;
@@ -42,11 +42,27 @@ const GameAssets = (() => {
         });
     }
 
-    async function loadScript(path) {
-        const remote = cdnUrl(path);
-        if (remote && await tryScript(remote, true)) return;
-        await tryScript(path, false);
+    function tryStylesheet(src, remote) {
+        return new Promise(resolve => {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.onload = () => resolve(true);
+            link.onerror = () => { link.remove(); resolve(false); };
+            if (remote) link.crossOrigin = "anonymous";
+            link.href = src;
+            document.head.append(link);
+        });
     }
 
-    return { loadImage, loadScript };
+    async function loadResource(path, load) {
+        const remote = cdnUrl(path);
+        if (remote && await load(remote, true)) return true;
+        return load(path, false);
+    }
+
+    return {
+        loadImage,
+        loadScript: path => loadResource(path, tryScript),
+        loadStyle: path => loadResource(path, tryStylesheet)
+    };
 })();

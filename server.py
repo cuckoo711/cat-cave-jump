@@ -15,7 +15,16 @@ API_BASE = os.getenv("GAME_API_BASE_URL", "/api")
 STATIC_CDN = os.getenv("GAME_STATIC_CDN_URL", "").strip()
 ORIGINS = {origin.strip() for origin in os.getenv("GAME_ALLOWED_ORIGINS", "").split(",") if origin.strip()}
 ASSETS = {path.relative_to(ROOT).as_posix() for path in (ROOT / "assets").iterdir() if path.is_file()}
-PUBLIC = ASSETS | {"index.html", "player.png", "audio-bank.js", "game-assets.js", "game-audio.js", "tunnel-mission.js", "online.js"}
+UI_ASSETS = {"ui/dist/cave-ui.js", "ui/dist/cave-ui.css"}
+CDN_ASSETS = (
+    {path.removeprefix("assets/"): path for path in ASSETS}
+    | {Path(path).name: path for path in UI_ASSETS}
+    | {"player.png": "player.png", "audio-bank.js": "audio-bank.js"}
+)
+PUBLIC = ASSETS | UI_ASSETS | {
+    "index.html", "player.png", "audio-bank.js", "game-assets.js", "game-audio.js",
+    "tunnel-mission.js", "online.js",
+}
 
 
 def release_id():
@@ -259,8 +268,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_data(200, f"window.CAT_CAVE_CONFIG = {value};".encode(), "application/javascript")
         elif path.startswith("/assets/cdn/"):
             name = path.removeprefix("/assets/cdn/")
-            asset = name if name in {"player.png", "audio-bank.js"} else "assets/" + name
-            if (asset not in ASSETS and asset not in {"player.png", "audio-bank.js"}) or parse_qs(url.query).get("v") != [VERSION]:
+            asset = CDN_ASSETS.get(name)
+            if asset is None or parse_qs(url.query).get("v") != [VERSION]:
                 self.send_json(404, {"error": "asset_not_found"})
                 return
             self.cdn_asset = True

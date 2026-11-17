@@ -14,10 +14,11 @@
         user-select: none;
         -webkit-user-select: none;
         -webkit-tap-highlight-color: transparent;
-        touch-action: none;
     }
     body { position: fixed; inset: 0; overscroll-behavior: none; }
+    #game { touch-action: none; }
     #gameCanvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+    #gameCanvas:focus { outline: none; }
     #gameControls {
         position: fixed; z-index: 2;
         display: flex; justify-content: space-between; align-items: flex-end; gap: 8px;
@@ -46,34 +47,20 @@
         display: grid; gap: 6px; min-width: 112px;
     }
     #gameSettings:not([open]) > div { display: none; }
-    :is(#rankDialog, #autoJumpDialog) {
+    #autoJumpDialog {
         box-sizing: border-box; width: min(420px, calc(100vw - 24px)); max-height: 85dvh;
         padding: 14px; border: 1px solid #445954; border-radius: 12px;
         background: #101b1b; color: #e6f1ef; font: 15px/1.4 "Microsoft YaHei", sans-serif;
         touch-action: pan-y;
     }
-    :is(#rankDialog, #autoJumpDialog)::backdrop { background: #080c0caa; }
-    :is(#rankDialog, #autoJumpDialog) button, #rankDialog input {
+    #autoJumpDialog::backdrop { background: #080c0caa; }
+    #autoJumpDialog button {
         min-height: 44px; padding: 6px 10px; border: 1px solid #68737d; border-radius: 8px;
         background: #20262d; color: #eef3f8; font: inherit;
     }
     #autoJumpDialog p { margin: 0 0 14px; }
     #autoJumpDialog form { display: flex; justify-content: flex-end; gap: 8px; }
     #autoJumpDialog button { min-width: 72px; }
-    #rankClose { display: block; margin-left: auto; min-width: 44px; }
-    #rankTabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0; }
-    #rankTabs button { padding-inline: 2px; font-size: 13px; white-space: nowrap; }
-    #rankTabs button[aria-selected="true"] { border-color: #7ef0c8; background: #254640; }
-    #rankMyPlace { color: #a6ebd8; margin: 4px 0 8px; }
-    #rankList { max-height: 48dvh; overflow: auto; touch-action: pan-y; margin: 0 0 10px; padding: 0; list-style: none; }
-    #rankList li { padding: 5px 0; }
-    #rankList li strong { float: right; margin-inline: 8px; }
-    #rankList li span { overflow-wrap: anywhere; }
-    #rankList details div { padding: 5px 0 0 18px; overflow-wrap: anywhere; }
-    #rankForm:not([hidden]) { display: flex; gap: 8px; }
-    #rankName { flex: 1; min-width: 0; user-select: text; -webkit-user-select: text; }
-    #rankStatus:empty { display: none; }
-
     #ui {
         position: absolute;
         top: max(16px, env(safe-area-inset-top));
@@ -144,6 +131,8 @@
 </style>
 </head>
 <body>
+<main id="homeMenu" aria-label="小黑的任务" hidden></main>
+<main id="game" hidden>
 <div id="ui">
     <div>得分 <span id="score">0</span></div>
     <small id="best">最佳 0</small>
@@ -159,10 +148,10 @@
     <canvas id="missionMap" width="540" height="116" role="img" aria-label="任务路线俯视图"></canvas>
     <footer><strong id="missionPhase" role="status">去程</strong><span id="missionDepth">相对深度 -1800 m</span><span id="missionCorrection">航向矫正 0 次</span></footer>
 </section>
-<canvas id="gameCanvas" aria-label="按住蓄力，松开跳跃"></canvas>
+<canvas id="gameCanvas" tabindex="-1" aria-label="按住蓄力，松开跳跃"></canvas>
 <div id="gameControls">
     <div id="gameActions">
-        <button id="rankButton" type="button" hidden>排行榜</button>
+        <button id="rankButton" type="button" aria-haspopup="dialog" hidden>排行榜</button>
         <button id="updateButton" type="button" hidden>更新</button>
     </div>
     <details id="gameSettings">
@@ -174,24 +163,8 @@
         </div>
     </details>
 </div>
-<dialog id="rankDialog" aria-label="排行榜">
-    <button id="rankClose" type="button" aria-label="关闭">×</button>
-    <div id="rankTabs" role="tablist" aria-label="排名维度">
-        <button id="rankScoreTab" type="button" role="tab" data-metric="score" aria-selected="true" aria-controls="rankPanel">得分</button>
-        <button id="rankDistanceTab" type="button" role="tab" data-metric="distance" aria-selected="false" aria-controls="rankPanel" tabindex="-1">距离</button>
-        <button id="rankTransfersTab" type="button" role="tab" data-metric="transfers" aria-selected="false" aria-controls="rankPanel" tabindex="-1">传送次数</button>
-        <button id="rankDurationTab" type="button" role="tab" data-metric="duration" aria-selected="false" aria-controls="rankPanel" tabindex="-1">任务时长</button>
-    </div>
-    <div id="rankPanel" role="tabpanel" aria-labelledby="rankScoreTab">
-        <div id="rankMyPlace" role="status">我的名次　未上榜</div>
-        <ol id="rankList"></ol>
-        <div id="rankStatus" role="status"></div>
-    </div>
-    <form id="rankForm" hidden>
-        <input id="rankName" aria-label="昵称" placeholder="昵称" maxlength="16" required>
-        <button type="submit">提交成绩</button>
-    </form>
-</dialog>
+</main>
+<dialog id="rankDialog" aria-label="排行榜"></dialog>
 <dialog id="autoJumpDialog" aria-labelledby="autoJumpWarning">
     <p id="autoJumpWarning">开启自动跳后，本局得分不计入排行榜。</p>
     <form method="dialog">
@@ -250,6 +223,8 @@ const CFG = {
 };
 
 /* ------------------------- 画布 ------------------------- */
+const homeMenu = document.getElementById("homeMenu");
+const game = document.getElementById("game");
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const missionPanel = document.getElementById("missionHud");
@@ -264,6 +239,7 @@ const portraitLayout = window.matchMedia("(max-width: 600px) and (orientation: p
 let DPR = 1, VW = 0, VH = 0, viewScale = 1;
 let sceneCenterX = 0, sceneCenterY = 0, promptTop = 0;
 function resize() {
+    if (game.hidden) return;
     DPR = Math.min(window.devicePixelRatio || 1, 2);
     const visual = window.visualViewport;
     const width = Math.max(1, visual ? visual.width : window.innerWidth);
@@ -286,7 +262,6 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
-resize();
 if (window.ResizeObserver) {
     const observeLayout = new ResizeObserver(resize);
     observeLayout.observe(controls);
@@ -397,7 +372,15 @@ function buildSprite(img, target, bundledFrames) {
         target.image = sheet; target.frames = renderFrames; target.ready = true;
     } else {
         sprite = sheet; spriteFrames = renderFrames; spriteReady = true;
+        drawCoverPlayer();
     }
+}
+function drawCoverPlayer() {
+    const cover = document.getElementById("coverPlayer");
+    if (!cover || !spriteReady) return;
+    const { sx, sy, sw, sh } = spriteFrames[0];
+    cover.width = sw; cover.height = sh;
+    cover.getContext("2d").drawImage(sprite, sx, sy, sw, sh, 0, 0, sw, sh);
 }
 (function loadSprite() {
     GameAssets.loadImage(CFG.spriteSrc, img => buildSprite(img, null, bundledSpriteFrames.player), () => {
@@ -527,6 +510,7 @@ function syncMissionHud() {
 }
 
 function drawMissionMap() {
+    if (game.hidden) return;
     const width = missionMap.clientWidth, height = missionMap.clientHeight;
     const pixelWidth = Math.round(width * DPR), pixelHeight = Math.round(height * DPR);
     if (missionMap.width !== pixelWidth || missionMap.height !== pixelHeight) {
@@ -667,7 +651,6 @@ function reset() {
     state = ST.IDLE; stateT = 0;
     popups.length = 0; bursts.length = 0;
 }
-reset();
 window.addEventListener("resize", drawMissionMap);
 if (window.visualViewport) window.visualViewport.addEventListener("resize", drawMissionMap);
 
@@ -817,7 +800,7 @@ document.addEventListener("bgmstatechange", syncMuteButton);
 syncMuteButton();
 muteButton.addEventListener("click", toggleMute);
 window.addEventListener("keydown", e => {
-    if (controls.contains(e.target) || rankDialog.open || autoJumpDialog.open) return;
+    if (game.hidden || controls.contains(e.target) || rankDialog.open || autoJumpDialog.open) return;
     if (e.code === "Space" && !e.repeat && !keyboardHeld && activePointer === null) {
         e.preventDefault(); keyboardHeld = true; pressStart();
     }
@@ -1069,6 +1052,7 @@ function projOf(wx, wy) {
 const strataSize = 544;
 let strataPattern = null;
 GameAssets.loadImage(CFG.undergroundSrc, strataImage => {
+    homeMenu.style.setProperty("--home-strata", `url(${JSON.stringify(strataImage.src)})`);
     // Mirror alternate tiles so opposite edges and all tile joins share the same pixels.
     const tile = document.createElement("canvas");
     tile.width = tile.height = strataSize * 2;
@@ -1476,7 +1460,7 @@ function render(t) {
 }
 
 /* ------------------------- 主循环 ------------------------- */
-let last = performance.now();
+let last;
 function loop(now) {
     const dt = clamp((now - last) / 1000, 0, 0.05);
     last = now;
@@ -1484,7 +1468,25 @@ function loop(now) {
     render(now / 1000);
     requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
+function startGame() {
+    homeMenu.hidden = true;
+    game.hidden = false;
+    resize();
+    reset();
+    RecordedAudio.unlock();
+    canvas.focus({ preventScroll: true });
+    last = performance.now();
+    requestAnimationFrame(loop);
+}
+Promise.all([
+    GameAssets.loadScript("ui/dist/cave-ui.js"),
+    GameAssets.loadStyle("ui/dist/cave-ui.css")
+]).then(([scriptLoaded]) => {
+    if (!scriptLoaded) return;
+    drawCoverPlayer();
+    document.getElementById("startButton").addEventListener("click", startGame, { once: true });
+    homeMenu.hidden = false;
+});
 </script>
 </body>
 </html>
