@@ -26,14 +26,6 @@ const scroll = ref(null);
 let boardRevision = 0;
 let opening = 0;
 
-const groups = computed(() => {
-    const grouped = new Map();
-    for (const entry of scores.value) {
-        if (!grouped.has(entry.rank)) grouped.set(entry.rank, []);
-        grouped.get(entry.rank).push(entry);
-    }
-    return Array.from(grouped.values());
-});
 const placement = computed(() => {
     if (failed.value) return '暂不可用';
     if (loading.value) return '查询中';
@@ -160,23 +152,11 @@ defineExpose({ open });
                     <span v-if="own" class="rank-own-value">{{ formatValue(own.value) }}</span>
                 </div>
                 <div ref="scroll" class="rank-scroll">
-                    <ol v-if="groups.length" id="rankList" :key="category.key" class="rank-list">
-                        <li v-for="group in groups" :key="group[0].rank">
-                            <div v-if="group.length === 1" class="rank-row">
-                                <span class="rank-index" :data-leading="group[0].rank <= 3" :aria-label="'第 ' + group[0].rank + ' 名'">{{ group[0].rank }}</span>
-                                <span class="rank-player">{{ group[0].name }}</span>
-                                <strong class="rank-value">{{ formatValue(group[0].value) }}</strong>
-                            </div>
-                            <details v-else class="rank-tie">
-                                <summary class="rank-row">
-                                    <span class="rank-index" :data-leading="group[0].rank <= 3" :aria-label="'第 ' + group[0].rank + ' 名'">{{ group[0].rank }}</span>
-                                    <span class="rank-player">{{ group.length }} 人并列</span>
-                                    <strong class="rank-value">{{ formatValue(group[0].value) }}</strong>
-                                </summary>
-                                <ul class="rank-tie-players">
-                                    <li v-for="entry in group" :key="entry.name">{{ entry.name }}</li>
-                                </ul>
-                            </details>
+                    <ol v-if="scores.length" id="rankList" :key="category.key" class="rank-list">
+                        <li v-for="entry in scores" :key="entry.name" class="rank-row">
+                            <span class="rank-index" :data-leading="entry.rank <= 3" :aria-label="'第 ' + entry.rank + ' 名'">{{ entry.rank }}</span>
+                            <span class="rank-player">{{ entry.name }}</span>
+                            <strong class="rank-value">{{ formatValue(entry.value) }}</strong>
                         </li>
                     </ol>
                     <div v-else class="rank-empty">
@@ -231,7 +211,7 @@ defineExpose({ open });
     font: inherit;
 }
 .rank-board button { padding: 6px 10px; cursor: pointer; touch-action: manipulation; }
-.rank-board :is(button, input, summary):focus-visible { outline: 2px solid #bcf4e5; outline-offset: -2px; }
+.rank-board :is(button, input):focus-visible { outline: 2px solid #bcf4e5; outline-offset: -2px; }
 .rank-board button:disabled { opacity: .58; cursor: default; }
 .rank-header button { min-width: 44px; font-size: 23px; line-height: 1; }
 .rank-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
@@ -269,23 +249,8 @@ defineExpose({ open });
     font-size: 13px;
 }
 .rank-index[data-leading="true"] { color: #edce96; background: #403729; }
-.rank-player, .rank-tie-players { overflow-wrap: anywhere; }
+.rank-player { overflow-wrap: anywhere; }
 .rank-value { white-space: nowrap; }
-.rank-tie summary { list-style: none; cursor: pointer; touch-action: pan-y; }
-.rank-tie summary::-webkit-details-marker { display: none; }
-.rank-tie .rank-player::after {
-    content: '';
-    display: inline-block;
-    margin: 0 0 3px 7px;
-    width: 5px;
-    height: 5px;
-    border: solid #9ab1ab;
-    border-width: 0 1px 1px 0;
-    transform: rotate(45deg);
-}
-.rank-tie[open] .rank-player::after { transform: rotate(225deg); }
-.rank-tie-players { list-style: none; margin: 0; padding: 0 12px 8px 44px; color: #b5c8c2; }
-.rank-tie-players li + li { margin-top: 5px; }
 .rank-empty { text-align: center; padding: 20px 0; }
 .rank-message, .rank-feedback { margin: 0; color: #b5c8c2; }
 .rank-empty button { margin-top: 8px; }

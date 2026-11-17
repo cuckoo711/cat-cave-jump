@@ -19,159 +19,16 @@
     #game { touch-action: none; }
     #gameCanvas { display: block; touch-action: none; -webkit-touch-callout: none; }
     #gameCanvas:focus { outline: none; }
-    #gameControls {
-        position: fixed; z-index: 2;
-        display: flex; justify-content: space-between; align-items: flex-end; gap: 8px;
-        bottom: max(12px, env(safe-area-inset-bottom));
-        left: max(12px, env(safe-area-inset-left));
-        right: max(12px, env(safe-area-inset-right));
-        pointer-events: none;
-    }
-    #gameControls button, #gameSettings summary {
-        min-width: 112px; min-height: 44px;
-        padding: 8px 12px; border: 1px solid #68737d; border-radius: 10px;
-        background: #20262de6; color: #eef3f8;
-        font: 14px "Microsoft YaHei", sans-serif; touch-action: manipulation;
-        pointer-events: auto;
-    }
-    #gameControls button:focus-visible, #gameSettings summary:focus-visible { outline: 2px solid #7ef0c8; outline-offset: 3px; }
-    #gameActions { display: flex; gap: 8px; }
-    #gameSettings { position: relative; margin-left: auto; }
-    #gameSettings summary {
-        box-sizing: border-box; min-width: 48px; display: grid; place-items: center;
-        list-style: none; cursor: pointer; font-size: 21px;
-    }
-    #gameSettings summary::-webkit-details-marker { display: none; }
-    #gameSettings > div {
-        position: absolute; right: 0; bottom: calc(100% + 8px);
-        display: grid; gap: 6px; min-width: 112px;
-    }
-    #gameSettings:not([open]) > div { display: none; }
-    #autoJumpDialog {
-        box-sizing: border-box; width: min(420px, calc(100vw - 24px)); max-height: 85dvh;
-        padding: 14px; border: 1px solid #445954; border-radius: 12px;
-        background: #101b1b; color: #e6f1ef; font: 15px/1.4 "Microsoft YaHei", sans-serif;
-        touch-action: pan-y;
-    }
-    #autoJumpDialog::backdrop { background: #080c0caa; }
-    #autoJumpDialog button {
-        min-height: 44px; padding: 6px 10px; border: 1px solid #68737d; border-radius: 8px;
-        background: #20262d; color: #eef3f8; font: inherit;
-    }
-    #autoJumpDialog p { margin: 0 0 14px; }
-    #autoJumpDialog form { display: flex; justify-content: flex-end; gap: 8px; }
-    #autoJumpDialog button { min-width: 72px; }
-    #ui {
-        position: absolute;
-        top: max(16px, env(safe-area-inset-top));
-        left: max(18px, env(safe-area-inset-left));
-        color: #eef3f8;
-        font: bold 26px/1.2 "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-        text-shadow: 0 2px 6px rgba(0,0,0,.85);
-        pointer-events: none;
-        letter-spacing: 1px;
-    }
-    #ui small { display: block; font-size: 14px; font-weight: normal; opacity: .65; margin-top: 4px; letter-spacing: 2px; }
-    #ui .correctionLabel { margin-top: 9px; }
-    #lives { display: block; margin-top: 2px; font-size: 26px; color: #f28e9b; letter-spacing: 5px; }
-    #missionHud {
-        position: fixed; z-index: 1; pointer-events: none;
-        top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right));
-        box-sizing: border-box; width: min(298px, calc(100vw - 118px));
-        padding: 11px 12px 9px; border-radius: 12px; border: 1px solid #445954;
-        background: #101b1bed; color: #e6f1ef;
-        font: 12px/1.4 "PingFang SC", "Microsoft YaHei", sans-serif;
-        font-variant-numeric: tabular-nums;
-    }
-    #missionHud footer, #missionHud dl { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
-    #missionPhase { font-size: 13px; font-weight: 700; color: #a6ebd8; }
-    #missionHud footer, #missionHud dt { color: #b0c0bc; }
-    #missionHud dl { margin: 0 0 6px; }
-    #missionHud dd { margin: 0; font-size: clamp(14px, 2.8vw, 20px); font-weight: 700; white-space: nowrap; }
-    #missionMap { display: block; width: 100%; height: 58px; }
-    #missionCorrection[data-active="true"] { color: #ffcb86; }
-    #liveRank:not([hidden]) { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; }
-    #liveRank { color: #a6ebd8; margin-bottom: 5px; }
-    @media (max-width: 600px), (max-height: 500px) {
-        #ui { font-size: 22px; }
-        #ui small { font-size: 12px; }
-        #missionHud { padding: 7px 8px; }
-    }
-    @media (max-width: 600px) {
-        #ui { max-width: 86px; }
-        #score { display: block; }
-        #ui small { letter-spacing: .5px; }
-    }
-    @media (max-height: 500px) {
-        #missionHud { width: min(248px, calc(100vw - 118px)); }
-        #missionMap { height: 46px; }
-    }
-    @media (max-width: 600px) and (orientation: portrait) {
-        #ui, #missionHud, #gameControls {
-            left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right));
-        }
-        #ui {
-            top: max(8px, env(safe-area-inset-top)); z-index: 1;
-            display: flex; justify-content: space-between; align-items: center; gap: 6px;
-            max-width: none; padding: 0 10px; height: 36px;
-            border: 1px solid #445954; border-radius: 10px; background: #101b1bed;
-            font-size: 15px; letter-spacing: 0; font-variant-numeric: tabular-nums;
-        }
-        #ui small { margin: 0; letter-spacing: 0; }
-        #score { display: inline; }
-        #ui .landingBudget { display: flex; align-items: center; gap: 5px; }
-        #ui .correctionLabel { margin: 0; }
-        #lives { margin: 0; font-size: 18px; letter-spacing: 2px; }
-        #missionHud { top: calc(max(8px, env(safe-area-inset-top)) + 44px); width: auto; padding: 7px 9px; }
-        #missionHud dd { font-size: 16px; }
-        #missionHud dl { margin-bottom: 4px; }
-        #missionMap { height: 46px; }
-        #gameControls button { min-width: 0; padding-inline: 8px; }
-    }
 </style>
 </head>
 <body>
 <main id="homeMenu" aria-label="小黑的任务" hidden></main>
 <main id="game" hidden>
-<div id="ui">
-    <div>得分 <span id="score">0</span></div>
-    <small id="best">最佳 0</small>
-    <div class="landingBudget"><small class="correctionLabel" aria-hidden="true">师傅修正</small><span id="lives" role="img" aria-label="师傅修正剩余 3 次">♥♥♥</span></div>
-</div>
-<section id="missionHud" aria-label="往返任务与小地图">
-    <div id="liveRank" hidden><strong id="livePlace"></strong><span id="rankGap"></span></div>
-    <dl>
-        <div><dt>距目标</dt><dd id="missionRemaining">15.00 km</dd></div>
-        <div><dt>已掘进</dt><dd id="missionDistance">0 m</dd></div>
-        <div><dt>上一跳</dt><dd id="missionJump">0 m</dd></div>
-    </dl>
-    <canvas id="missionMap" width="540" height="116" role="img" aria-label="任务路线俯视图"></canvas>
-    <footer><strong id="missionPhase" role="status">去程</strong><span id="missionDepth">相对深度 -1800 m</span><span id="missionCorrection">航向矫正 0 次</span></footer>
-</section>
 <canvas id="gameCanvas" tabindex="-1" aria-label="按住蓄力，松开跳跃"></canvas>
-<div id="gameControls">
-    <div id="gameActions">
-        <button id="rankButton" type="button" aria-haspopup="dialog" hidden>排行榜</button>
-        <button id="updateButton" type="button" hidden>更新</button>
-    </div>
-    <details id="gameSettings">
-        <summary aria-label="游戏设置">···</summary>
-        <div>
-            <button id="muteButton" type="button" aria-pressed="false">开启声音</button>
-            <button id="landingHintButton" type="button" aria-pressed="false">落点提示：关</button>
-            <button id="autoJumpButton" type="button" aria-pressed="false">自动跳：关</button>
-        </div>
-    </details>
-</div>
+<div id="gameHud"></div>
+<div id="gameToolbar"></div>
 </main>
 <dialog id="rankDialog" aria-label="排行榜"></dialog>
-<dialog id="autoJumpDialog" aria-labelledby="autoJumpWarning">
-    <p id="autoJumpWarning">开启自动跳后，本局得分不计入排行榜。</p>
-    <form method="dialog">
-        <button value="cancel" autofocus>取消</button>
-        <button value="confirm">开启</button>
-    </form>
-</dialog>
 
 <script src="runtime-config.js"></script>
 <script src="game-assets.js"></script>
@@ -227,12 +84,7 @@ const homeMenu = document.getElementById("homeMenu");
 const game = document.getElementById("game");
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-const missionPanel = document.getElementById("missionHud");
-const controls = document.getElementById("gameControls");
-const gameSettings = document.getElementById("gameSettings");
-const autoJumpButton = document.getElementById("autoJumpButton");
-const autoJumpDialog = document.getElementById("autoJumpDialog");
-const autoJumpWarning = document.getElementById("autoJumpWarning");
+let missionPanel, controls, missionMap, mapCtx, autoJumpDialog, closeSettings;
 const rankDialog = document.getElementById("rankDialog");
 const portraitLayout = window.matchMedia("(max-width: 600px) and (orientation: portrait)");
 // Keep physics in world units; scale only the display for small screens.
@@ -262,12 +114,6 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
-if (window.ResizeObserver) {
-    const observeLayout = new ResizeObserver(resize);
-    observeLayout.observe(controls);
-    observeLayout.observe(missionPanel);
-}
-
 /* ------------------------- 工具 ------------------------- */
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -443,14 +289,7 @@ let stateT = 0;                 // 当前状态已持续时间(s)
 let score = 0, combo = 0;
 let transferCount = 0, runStartedAt = null;
 let landingCorrections = CFG.landingCorrectionLimit;
-function syncLandingCorrections() {
-    const node = document.getElementById("lives");
-    node.textContent = "♥".repeat(landingCorrections) + "♡".repeat(CFG.landingCorrectionLimit - landingCorrections);
-    node.setAttribute("aria-label", "师傅修正剩余 " + landingCorrections + " 次");
-    node.title = node.getAttribute("aria-label");
-}
 let best = +(localStorage.getItem("cavejump_best") || 0);
-document.getElementById("best").textContent = "最佳 " + best;
 
 function saveBest() {
     if (!usedAuto) {
@@ -463,7 +302,7 @@ function saveBest() {
     if (score <= best) return;
     best = score;
     localStorage.setItem("cavejump_best", best);
-    document.getElementById("best").textContent = "最佳 " + best;
+    syncGameHud();
 }
 
 const cavities = [];
@@ -481,32 +320,34 @@ let rabbitForm = false, rabbitTransformPending = false, rabbitSubtitleTime = 0;
 const mission = new TunnelMission();
 let nextMove = null;
 const tunnelCamera = { along: 0, depth: 0 };
-const missionMap = document.getElementById("missionMap");
-const mapCtx = missionMap.getContext("2d");
-const missionHud = {
-    phase: document.getElementById("missionPhase"),
-    remaining: document.getElementById("missionRemaining"),
-    distance: document.getElementById("missionDistance"),
-    jump: document.getElementById("missionJump"),
-    depth: document.getElementById("missionDepth"),
-    correction: document.getElementById("missionCorrection")
-};
+let renderGameHud;
 
 function formatDistance(metres) {
     return metres >= 1000 ? (metres / 1000).toFixed(2) + " km" : Number(metres.toFixed(1)) + " m";
 }
 
-function syncMissionHud() {
-    const phases = { outbound: "去程", return: "返程", complete: "往返完成" };
-    const phase = phases[mission.phase];
-    if (missionHud.phase.textContent !== phase) missionHud.phase.textContent = phase;
-    missionHud.remaining.textContent = formatDistance(mission.remaining);
-    missionHud.distance.textContent = formatDistance(mission.travelled);
-    missionHud.jump.textContent = formatDistance(mission.lastJump);
-    missionHud.depth.textContent = "相对深度 " + Math.round(CFG.startDepth - mission.position.z) + " m";
-    missionHud.correction.textContent = (mission.corrected ? "已矫正 · " : "航向矫正 ") + mission.corrections + " 次";
-    missionHud.correction.dataset.active = String(mission.corrected);
-    drawMissionMap();
+function readGameHud() {
+    return {
+        score, best, landingCorrections, correctionLimit: CFG.landingCorrectionLimit,
+        phase: mission.phase, remaining: mission.remaining, distance: mission.travelled,
+        lastJump: mission.lastJump, depth: Math.round(CFG.startDepth - mission.position.z),
+        corrected: mission.corrected, corrections: mission.corrections,
+        muted: SFX.muted, soundNeedsStart: Boolean(soundNeedsStart()),
+        landingHint: showLandingHint, autoJump
+    };
+}
+function syncGameHud() {
+    renderGameHud?.(readGameHud());
+}
+function connectGameHud(nodes, render) {
+    ({ missionPanel, controls, missionMap, autoJumpDialog, closeSettings } = nodes);
+    mapCtx = missionMap.getContext("2d");
+    renderGameHud = render;
+    if (window.ResizeObserver) {
+        const observeLayout = new ResizeObserver(resize);
+        observeLayout.observe(controls);
+        observeLayout.observe(missionPanel);
+    }
 }
 
 function drawMissionMap() {
@@ -624,7 +465,7 @@ function carveNextCavity() {
 }
 
 function reset() {
-    landingCorrections = CFG.landingCorrectionLimit; syncLandingCorrections();
+    landingCorrections = CFG.landingCorrectionLimit;
     RecordedAudio.stopVoice();
     OnlineGame.allowUpdate(true);
     cavities.length = 0;
@@ -644,9 +485,9 @@ function reset() {
     autoCharging = false;
     rescueNotice = false;
     tunnelCamera.along = 0; tunnelCamera.depth = 0;
-    syncMissionHud();
+    drawMissionMap();
     rabbitForm = false; rabbitTransformPending = false; rabbitSubtitleTime = 0;
-    document.getElementById("score").textContent = 0;
+    syncGameHud();
     OnlineGame.setStanding(0);
     state = ST.IDLE; stateT = 0;
     popups.length = 0; bursts.length = 0;
@@ -713,10 +554,7 @@ function cancelInput() {
 }
 canvas.addEventListener("pointerdown", e => {
     if (e.button !== 0 || e.isPrimary === false || activePointer !== null || keyboardHeld) return;
-    if (gameSettings.open) {
-        gameSettings.open = false;
-        return;
-    }
+    if (closeSettings()) return;
     e.preventDefault(); activePointer = e.pointerId;
     canvas.setPointerCapture(e.pointerId); pressStart();
 });
@@ -729,16 +567,10 @@ canvas.addEventListener("lostpointercapture", e => { if (e.pointerId === activeP
 window.addEventListener("blur", cancelInput);
 window.addEventListener("orientationchange", cancelInput);
 document.addEventListener("visibilitychange", () => { if (document.hidden) cancelInput(); });
-const muteButton = document.getElementById("muteButton");
-const landingHintButton = document.getElementById("landingHintButton");
-document.addEventListener("click", e => {
-    if (!gameSettings.contains(e.target) && !autoJumpDialog.contains(e.target)) gameSettings.open = false;
-});
 function setAutoJump(active) {
     if (autoJump === active) return;
     autoJump = active;
-    autoJumpButton.setAttribute("aria-pressed", String(active));
-    autoJumpButton.textContent = active ? "自动跳：开" : "自动跳：关";
+    syncGameHud();
     if (active) {
         if (state === ST.OVER || state === ST.COMPLETE) reset();
         usedAuto = true;
@@ -748,7 +580,7 @@ function setAutoJump(active) {
         cancelCharge();
     }
 }
-autoJumpButton.addEventListener("click", () => {
+function requestAutoJump() {
     if (autoJump) {
         setAutoJump(false);
         return;
@@ -759,32 +591,17 @@ autoJumpButton.addEventListener("click", () => {
         return;
     }
     cancelInput();
-    autoJumpWarning.textContent = "开启自动跳后，" + (finished ? "下一局" : "本局") + "得分不计入排行榜。";
-    autoJumpDialog.returnValue = "cancel";
-    autoJumpDialog.showModal();
-});
-autoJumpDialog.addEventListener("close", () => {
-    if (autoJumpDialog.returnValue === "confirm") setAutoJump(true);
-});
+    return finished ? "下一局" : "本局";
+}
 let showLandingHint = false;
 try { showLandingHint = localStorage.getItem("cavejump_landing_hint") === "true"; } catch (_) {}
-function syncLandingHintButton() {
-    landingHintButton.setAttribute("aria-pressed", String(showLandingHint));
-    landingHintButton.textContent = "\u843d\u70b9\u63d0\u793a\uff1a" + (showLandingHint ? "\u5f00" : "\u5173");
-}
-landingHintButton.addEventListener("click", () => {
+function toggleLandingHint() {
     showLandingHint = !showLandingHint;
-    syncLandingHintButton();
+    syncGameHud();
     try { localStorage.setItem("cavejump_landing_hint", String(showLandingHint)); } catch (_) {}
-});
-syncLandingHintButton();
+}
 function soundNeedsStart() {
     return RecordedAudio.bgmLoading || (RecordedAudio.bgm?.paused && !RecordedAudio.bgm.error);
-}
-function syncMuteButton() {
-    muteButton.setAttribute("aria-pressed", String(SFX.muted));
-    muteButton.textContent = SFX.muted || soundNeedsStart() ? "开启声音" : "静音";
-    muteButton.setAttribute("aria-label", muteButton.textContent);
 }
 function toggleMute() {
     if (!SFX.muted && soundNeedsStart()) {
@@ -794,11 +611,9 @@ function toggleMute() {
         if (SFX.muted) SFX.ctx?.suspend().catch(() => {});
         else RecordedAudio.unlock();
     }
-    syncMuteButton();
+    syncGameHud();
 }
-document.addEventListener("bgmstatechange", syncMuteButton);
-syncMuteButton();
-muteButton.addEventListener("click", toggleMute);
+document.addEventListener("bgmstatechange", syncGameHud);
 window.addEventListener("keydown", e => {
     if (game.hidden || controls.contains(e.target) || rankDialog.open || autoJumpDialog.open) return;
     if (e.code === "Space" && !e.repeat && !keyboardHeld && activePointer === null) {
@@ -837,7 +652,7 @@ function openLandingExit() {
     const { wx, wy, target, kind } = landInfo;
     if (kind === "correction") {
         landingCorrections--;
-        syncLandingCorrections();
+        syncGameHud();
     }
     if (kind === "overlap" || kind === "correction") {
         landInfo.cavity = createCavity(wx, wy, target.radius, target.sequence, kind);
@@ -1014,14 +829,13 @@ function resolveLanding() {
             cam.wy = lerp(currentCavity.wy, nextCavity.wy, .5);
         }
     }
-    syncMissionHud();
+    drawMissionMap();
     if (kind === "perfect") {
         combo++;
         const add = 2 + Math.min(combo - 1, 3);
         score += add;
         if (combo % 3 === 0 && landingCorrections < CFG.landingCorrectionLimit) {
             landingCorrections++;
-            syncLandingCorrections();
         } else {
             popup("PERFECT +" + add + (combo > 1 ? "  x" + combo : ""), "#7ef0c8");
         }
@@ -1030,7 +844,7 @@ function resolveLanding() {
         combo = 0;
         score++;
     }
-    document.getElementById("score").textContent = score;
+    syncGameHud();
     OnlineGame.setStanding(usedAuto ? 0 : score);
 }
 function popup(text, color) { popups.push({ text, color, x: VW / 2, y: Math.max(VH * .34, promptTop), t: 0, life: 1.1 }); }

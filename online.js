@@ -1,18 +1,13 @@
 "use strict";
 
 const OnlineGame = (() => {
-    const rankButton = document.getElementById("rankButton");
-    const updateButton = document.getElementById("updateButton");
-    const liveRank = document.getElementById("liveRank");
-    const livePlace = document.getElementById("livePlace");
-    const rankGap = document.getElementById("rankGap");
     const config = window.CAT_CAVE_CONFIG || {};
     let api;
     try {
         const url = new URL(config.apiBase, document.baseURI);
         if (config.apiBase && ["http:", "https:"].includes(url.protocol)) api = url.href.replace(/\/$/, "");
     } catch (_) {}
-    if (!api) return { enabled: false, recordRun() {}, allowUpdate() {}, setStanding() {} };
+    if (!api) return { enabled: false, observeHud() {}, recordRun() {}, allowUpdate() {}, setStanding() {} };
 
     const get = key => {
         try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -31,6 +26,11 @@ const OnlineGame = (() => {
     let canUpdate = true;
     let player = get("cavejump_online_player");
     let standingScore = 0, rankRevision = 0, rankTimer = null;
+    let standing = null, renderHud;
+
+    function syncHud() {
+        renderHud?.({ standing, updateAvailable: canUpdate && Boolean(availableVersion) });
+    }
 
     function formatRank(rank) {
         if (rank <= 100) return "第" + rank + "名";
@@ -75,9 +75,8 @@ const OnlineGame = (() => {
         try {
             const { rank, gap } = await request("/rank?score=" + standingScore);
             if (revision !== rankRevision) return;
-            livePlace.textContent = formatRank(rank);
-            rankGap.textContent = gap === null ? "" : "距离上一名还差 " + gap + " 分";
-            liveRank.hidden = false;
+            standing = { place: formatRank(rank), gap };
+            syncHud();
         } catch (_) {}
     }
 
@@ -86,17 +85,10 @@ const OnlineGame = (() => {
         try {
             const { version } = await request("/version");
             availableVersion = typeof version === "string" && version !== config.version ? version : null;
-            updateButton.hidden = !canUpdate || !availableVersion;
+            syncHud();
         } catch (_) {}
     }
 
-    rankButton.hidden = false;
-    updateButton.addEventListener("click", () => {
-        if (!canUpdate || !availableVersion) return;
-        const url = new URL(location.href);
-        url.searchParams.set("v", availableVersion);
-        location.replace(url);
-    });
     checkVersion();
     setInterval(checkVersion, 30000);
     setInterval(refreshStanding, 5000);
@@ -105,6 +97,16 @@ const OnlineGame = (() => {
     return {
         enabled: true,
         formatRank,
+        observeHud(render) {
+            renderHud = render;
+            syncHud();
+        },
+        applyUpdate() {
+            if (!canUpdate || !availableVersion) return;
+            const url = new URL(location.href);
+            url.searchParams.set("v", availableVersion);
+            location.replace(url);
+        },
         get hasPending() { return pending.length > 0; },
         loadProfile() { return post("/player", {}); },
         fetchBoard(metric) {
@@ -129,8 +131,10 @@ const OnlineGame = (() => {
             standingScore = score;
             rankRevision++;
             clearTimeout(rankTimer);
-            if (!score) liveRank.hidden = true;
-            else rankTimer = setTimeout(refreshStanding, 150);
+            if (!score) {
+                standing = null;
+                syncHud();
+            } else rankTimer = setTimeout(refreshStanding, 150);
         },
         recordRun(score, distance, jumps, transfers, durationMs) {
             const distanceCm = Math.round(distance * 100);
@@ -148,7 +152,7 @@ const OnlineGame = (() => {
         allowUpdate(allowed) {
             if (canUpdate === allowed) return;
             canUpdate = allowed;
-            updateButton.hidden = !canUpdate || !availableVersion;
+            syncHud();
             if (canUpdate) checkVersion();
         }
     };
